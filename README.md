@@ -4,6 +4,13 @@ Only entries in the pdb file with marked as ATOM are considered. Duplicated side
 Each of the files contains an argparser and can be used with the filepath to the pdb file of the protein of interest as only argument.
 They calculate the specific interactions and build clusters of interacting side chains. If desired, these are also saved in a file.
 
+
+**Software Requirements:**
+*  [Python3.10](https://www.python.org/downloads/)
+
+*optional:*
+*  [Anaconda or Miniconda](https://docs.anaconda.com/anaconda/install/index.html)
+
 To execute please run one of the following commands:
 
 `python3 h_bond_test.py -f /PATH/TO/PDB/FILE`

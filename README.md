@@ -1,3 +1,5 @@
+![TEST](https://github.com/ugSUBMARINE/structural-properties/actions/workflows/test.yml/badge.svg)
+
 This is a repository in which 3 stand-alone programmes for the calculation of hydrogen bond networks, salt bridge networks and hydrophobic clusters inside a protein structure are available.
 To calculate these properties, a pdb file of the protein of interest is needed.
 Only entries in the pdb file with marked as ATOM are considered. Duplicated side chain entries are not allowed. It is possible to select one chain or to use all chains in the pdb file for the calculation.

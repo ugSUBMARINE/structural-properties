@@ -285,4 +285,3 @@ def create_best_model(
 
 if __name__ == "__main__":
     pass
-    create_dataframes(temp_cd, "temp")

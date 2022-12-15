@@ -58,9 +58,22 @@ HB_DATA_DESC = np.asarray(
 )
 
 # Index for selcted _DATA_DESC
+"""
+# md sim
 HB_SELE = [3, 4, 7]
 HY_SELE = [0, 3, 7]
 SB_SELE = [3, 6, 7]
+"""
+"""
+# esm_single
+HB_SELE = [2, 6, 0]
+HY_SELE = [0, 3, 4]
+SB_SELE = [6, 2, 7]
+"""
+# esm_double
+HB_SELE = [5, 4, 0]
+HY_SELE = [3, 0, 7]
+SB_SELE = [0, 4, 3]
 
 
 def analysis(
@@ -161,6 +174,7 @@ def analysis(
 
 def use_model(
     comp_value: np.ndarray[tuple[int], np.dtype[int | float]],
+    p_names: list[str],
     model: sm.OLS,
     data: np.ndarray[tuple[int, int], np.dtype[int | float]],
     save_plot: bool = False,
@@ -171,6 +185,8 @@ def use_model(
     :parameter
         - comp_value:
           values the calculated values should be fit to
+        - p_names:
+          name of the proteins
         - model:
           statsmodels linear_model instance
         - data:
@@ -187,7 +203,8 @@ def use_model(
     predictions = model.predict(np.column_stack((np.ones(len(data)), data)))
     print(f"\nPredicted order:\n{' < '.join(p_names[np.argsort(predictions)])}")
     pr, pp = stats.pearsonr(comp_value, predictions)
-    print(f"PearsonR: {pr:>8.4f}\np: {pp:>15.4f}")
+    print(f"PearsonR: {pr:>17.4f}\np: {pp:>24.4f}")
+    print(f"Mean Absolute Error: {np.mean(np.abs(comp_value - predictions)):0.4f}")
 
     # scatter plot of ground truth (x) and predictions (y)
     fig, ax = plt.subplots(figsize=(32, 18))
@@ -206,8 +223,11 @@ def create_best_model(
     hy_dataframe: pd.DataFrame,
     sb_dataframe: pd.DataFrame,
     cv: list[int | float] | np.ndarray[tuple[int], np.dtype[int | float]],
+    p_names: list[str],
     save_plot: bool = False,
     show_plot: bool = False,
+    save_model: str | None = None,
+    chose_model_ind: int | None = None,
 ) -> None:
     """find the model that describes the data the best without overfitting
     :parameter
@@ -219,10 +239,16 @@ def create_best_model(
           DataFrame containing all saltbridges attributes
         - cv:
           experimental values that should be predicted
+        - p_names:
+          name of the proteins
         - save_plot:
           True to save the plot as performances_plot.png
         - show_plot:
           True to show the scatter plot
+        - save_model:
+          to store model use filepath where the model should be stored
+        - chose_model_ind:
+          index of the 10 best models that should be used (and saved )
     :return
         - None
     """
@@ -256,31 +282,38 @@ def create_best_model(
 
     # index of return of analysis
     performance_criteria = 0
+    performance_order = np.argsort(performances_combinations[:, performance_criteria])
 
     print("\nBest 10 combinations:")
-    for i in used_combinations[
-        np.argsort(performances_combinations[:, performance_criteria])
-    ][:10]:
+    for i in used_combinations[performance_order][:10]:
         print(f"{' - '.join(i)}")
     print("\nBest 10 combinations (Values are MSEs of LOO model):")
-    for i in performances_combinations[:, 0][
-        np.argsort(performances_combinations[:, performance_criteria])
-    ][:10]:
+    for i in performances_combinations[:, 0][performance_order][:10]:
         print(f"{i:0.4f}")
     print("\nBest 10 combinations (Values are r² from OLS):")
-    for i in performances_combinations[:, 1][
-        np.argsort(performances_combinations[:, performance_criteria])
-    ][:10]:
+    for i in performances_combinations[:, 1][performance_order][:10]:
         print(f"{i:0.4f}")
 
-    best_comp = np.argmin(performances_combinations[:, performance_criteria])
+    best_comp = performance_order[0]
+    if chose_model_ind is not None:
+        best_comp = performance_order[chose_model_ind]
     use_model(
         cv,
+        p_names,
         performances_combinations[:, -1][best_comp],
         np.asarray(master_frame.loc[:, used_combinations[best_comp]]),
         save_plot,
         show_plot,
     )
+    if save_model is not None:
+        if not os.path.isdir("saved_models"):
+            os.mkdir("saved_models")
+        sett = open(os.path.join("saved_models", save_model + "_setting.txt"), "w+")
+        sett.write(",".join(list(used_combinations[best_comp])))
+        sett.close()
+        performances_combinations[:, -1][best_comp].save(
+            os.path.join("saved_models", save_model + ".pickle")
+        )
 
 
 if __name__ == "__main__":

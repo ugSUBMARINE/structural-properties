@@ -296,7 +296,20 @@ def create_best_model(
 
     best_comp = performance_order[0]
     if chose_model_ind is not None:
-        best_comp = performance_order[chose_model_ind]
+        if type(chose_model_ind) == int:
+            best_comp = performance_order[chose_model_ind]
+        elif type(chose_model_ind) == str:
+            if chose_model_ind.startswith("!"):
+                # desired number of parameters
+                des_num_param = int(chose_model_ind[1:])
+            else:
+                des_num_param = int(chose_model_ind)
+            params = np.asarray([
+                    len(i) for i in used_combinations[performance_order][:10]
+            ])
+            # model with the closest number of parameters of the top 10 models
+            best_comp = performance_order[np.argmin(np.abs(params - des_num_param))]
+    print(f"Chosen combination: {used_combinations[best_comp]}")
     use_model(
         cv,
         p_names,

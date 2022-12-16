@@ -57,16 +57,16 @@ show_plots = False
 save_plots = False
 # number of structures per protein
 num_replicas = 1
-# index of which model to test and save
-model_ind = None  # 1
+# index of which model to test and save or e.g. "!4" to specify the number of parameters 
+model_ind = "!6"  # 1  # None
 # how the saved model should be named - None to not save
-save_model = None  # "esm_single"
+save_model = None  # "esm_single"  # None
 # which data the model should use for fitting
 data_path = "esm_single_out"
 # to add a protein name to the used names e.g. "769bc" - empty [] to not add
-add_names = ["N0"]
+add_names = []
 # data of the added protein e.g. 75.3 - empty [] to not add
-add_temp = [55.6]
+add_temp = []
 # -----------------------------------------------------------------------
 
 temp_cd = np.append(temp_cd, add_temp)
@@ -82,8 +82,12 @@ salt_bridges_data = []
 h_bonds_data = []
 hydrophobic_cluster_data = []
 
-fig, ax = plt.subplots(3, 3, figsize=(32, 18))
-fig_kde, ax_kde = plt.subplots(3, 3, figsize=(32, 18))
+fig, ax = plt.subplots(
+    3, np.max([len(HB_SELE), len(HY_SELE), len(SB_SELE)]), figsize=(32, 18)
+)
+fig_kde, ax_kde = plt.subplots(
+    3, np.max([len(HB_SELE), len(HY_SELE), len(SB_SELE)]), figsize=(32, 18)
+)
 
 # iterate over all directories where the data for each protein and frame is stored
 for subdir, dirs, files in os.walk(os.path.expanduser(data_path)):

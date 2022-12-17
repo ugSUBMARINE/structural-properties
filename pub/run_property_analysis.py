@@ -57,8 +57,8 @@ show_plots = False
 save_plots = False
 # number of structures per protein
 num_replicas = 1
-# index of which model to test and save or e.g. "!4" to specify the number of parameters 
-model_ind = "!6"  # 1  # None
+# index of which model to test and save or e.g. "!4" to specify the number of parameters
+model_ind = None  # "!6" # 1
 # how the saved model should be named - None to not save
 save_model = None  # "esm_single"  # None
 # which data the model should use for fitting
@@ -67,10 +67,12 @@ data_path = "esm_single_out"
 add_names = []
 # data of the added protein e.g. 75.3 - empty [] to not add
 add_temp = []
+# data to fit the model to (ndarray[tuple[int], np.dtype[int|float]])
+target = temp_cd
 # -----------------------------------------------------------------------
 
-temp_cd = np.append(temp_cd, add_temp)
-print(" < ".join(temp_cd[np.argsort(temp_cd)].astype(str)))
+target = np.append(target, add_temp)
+print(" < ".join(target[np.argsort(target)].astype(str)))
 p_names = np.append(p_names, add_names)
 # name of the folders where the data is stored
 data_folders = ["saltbridges", "h_bonds", "hydrophobic_cluster"]
@@ -269,17 +271,17 @@ hy_df = pd.DataFrame(
 ).round(2)
 
 print("Hydrogen Bonds")
-single_stats(HB_DATA_DESC, h_bonds_data, temp_cd)
+single_stats(HB_DATA_DESC, h_bonds_data, target)
 print("\nHydrophobic Cluster")
-single_stats(HY_DATA_DESC, hydrophobic_cluster_data, temp_cd)
+single_stats(HY_DATA_DESC, hydrophobic_cluster_data, target)
 print("\nSalt Bridges")
-single_stats(SB_DATA_DESC, salt_bridges_data, temp_cd)
+single_stats(SB_DATA_DESC, salt_bridges_data, target)
 
 create_best_model(
     hb_df,
     hy_df,
     sb_df,
-    temp_cd,
+    target,
     p_names,
     save_plots,
     show_plots,

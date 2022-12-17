@@ -79,7 +79,7 @@ temp_cd = np.asarray([54.5, 56.1, 55.2, 46.4, 78.1, 57.8, 65.4, 60.9, 55.3, 72.7
 activity = np.asarray([20, 2.5, 5, 3, 4, 12, 4, 6, 2, 1.5])
 
 if __name__ == "__main__":
-# ----------------------- PARAMETERS ------------------------------------
+    # ----------------------- PARAMETERS ------------------------------------
     # which column of the dat file should be used
     col_oi = "CA"
     # how many residues should be converted to np.nan from 0:cut_from_start
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     chain_oi = "A"
     # residues for which the rmsf value should be searched
     # - indexed like in the pdb file
-    res_oi = None #  [68, 66, 98, 41, 64, 31, 11, 13]
+    res_oi = None  #  [68, 66, 98, 41, 64, 31, 11, 13]
     # where a region of residues in the alignment start in the pdb 0 indexed
     start_roi = None  # 115
     end_roi = None  # 140
@@ -103,10 +103,18 @@ if __name__ == "__main__":
     # whether to print the alignment or not
     show_alignment = False
     # whether plots should be shown
-    show_plots = True
+    show_plots = False
     # whether to save the plots
     save_plots = False
-# -----------------------------------------------------------------------
+    # file name of the alignment file
+    algn_file = "all_ancestor_alignment_per_chain.clustal_num"
+    # name of the directory containing the protein structures
+    structure_path = "structures"
+    # name of the directory containing Schrödinger's .dat files
+    data_path = "rmsf"
+    # base name of the .dat files
+    file_base = "P_RMSF"
+    # -----------------------------------------------------------------------
     # mean RMSF values per residue for all proteins from the 10 replicas per protein
     mean_res_vals = []
     # mean_res_vals split per chain
@@ -121,13 +129,15 @@ if __name__ == "__main__":
         # mean over all 10 replicas
         inter_vals = []
         for i in range(1, num_replica + 1):
-            inter_vals += [list(read_dat(f"rmsf/{p}/P_RMSF{i}.dat")[col_oi])]
+            inter_vals += [
+                list(read_dat(f"{data_path}/{p}/{file_base}{i}.dat")[col_oi])
+            ]
         # mean of all replicas of protein p
         mean_inter_vals = np.mean(np.asarray(inter_vals).astype(float), axis=0)
         mean_res_vals.append(mean_inter_vals)
         # get sequences from the pdb files of specified chains
         pdb_cont = return_seq_pdb(
-            os.path.join("structures", p + ".pdb"),
+            os.path.join(structure_path, p + ".pdb"),
             chains[cp],
         )
         pdb_file_content.append(pdb_cont)
@@ -152,9 +162,7 @@ if __name__ == "__main__":
     pdb_chain_len = np.split(np.asarray(pdb_chain_len), len(p_names))
 
     # sequences from alignment with '-'
-    aligned_seq = clustalw_alignment_parser(
-        "all_ancestor_alignment_per_chain.clustal_num", 20
-    )
+    aligned_seq = clustalw_alignment_parser(algn_file, 20)
     if show_alignment:
         for ci, i in enumerate(aligned_seq):
             print(f"{p_names[ci // 2]:>4} {i}")

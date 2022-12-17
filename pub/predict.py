@@ -20,15 +20,18 @@ from run_rmsf_analysis import temp_cd, activity, p_names
 from properties import SaltBridges, HydrophobicClusterOwn
 
 np.set_printoptions(threshold=sys.maxsize)
+
+# ----------------------- PARAMETERS ------------------------------------
 # names of proteins for which data is available but are not in original p_names
 p_names = np.append(p_names, ["769bc", "N0"])
 # name of the saved model in saved_models/
 model_name = "esm_double_5"
-# data  of proteins the model should use for predictions
+# data of proteins the model should use for predictions
 data_dir = "esm_double_out"
+# -----------------------------------------------------------------------
 
 
-# reading and creating data for each protein
+# reading and calculating data for each protein
 salt_bridges_data = []
 h_bonds_data = []
 hydrophobic_cluster_data = []
@@ -58,7 +61,7 @@ hy_df = pd.DataFrame(
     hydrophobic_cluster_data, index=p_names, columns=HY_DATA_DESC
 ).round(2)
 
-# attributes used 
+# attributes used
 hb_vals = HB_DATA_DESC[HB_SELE]
 hy_vals = HY_DATA_DESC[HY_SELE]
 sb_vals = SB_DATA_DESC[SB_SELE]

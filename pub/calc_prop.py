@@ -9,28 +9,7 @@ from h_bond_test import find_h_bonds
 from salt_bridges import find_saltbridges
 from hydrophobic_cluster import hydr_cluster
 
-# output directory name in pub
-parent_name = "single_struct_out"
-# structure path in pub
-struct_pub = "structures"
-
-p_names = np.asarray(
-    [
-        "4alb",
-        "N0",
-        "N2",
-        "N4",
-        "N5",
-        "N31",
-        "N55",
-        "N80",
-        "N122",
-        "N124",
-        "N134",
-        "769bc",
-    ]
-)
-
+from run_rmsf_analysis import p_names
 
 def check_dir(path: str) -> None:
     """check if directory exists and create if it doesn't
@@ -43,6 +22,16 @@ def check_dir(path: str) -> None:
     if not os.path.isdir(path):
         os.mkdir(path)
 
+
+# ----------------------- PARAMETERS ------------------------------------
+# output directory name in pub
+parent_name = "single_struct_out"
+# structure path in pub
+struct_pub = "structures"
+# to add a protein name to the used names e.g. "769bc" - empty [] to not add
+add_names = ["N0", "769bc"]
+# -----------------------------------------------------------------------
+p_names = np.append(p_names, add_names)
 
 # create dir to store results
 check_dir(parent_name)

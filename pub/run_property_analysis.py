@@ -30,7 +30,8 @@ def single_stats(
     desc: list[str],
     property_data: np.ndarray[tuple[int, int], np.dtype[int | float]],
     cv: list[int | float] | np.ndarray[tuple[int], np.dtype[int | float]],
-) -> None:
+    num_params: int = 3,
+) -> np.ndarray[tuple[int], np.dtype[str]]:
     """calculate and print correlation between single properties and experimental data
     :parameter
         - desc:
@@ -39,9 +40,13 @@ def single_stats(
           calculated values for each property
         - cv:
           experimental data to compare against
+        - num_params:
+          how many parameters should be return
     :return
-        - None
+        - descriptions
+          *_DATA_DESC with the highest PearsonR
     """
+    descriptions, pr, pp = [], [], []
     for i in range(len(desc)):
         i_data = property_data[:, i]
         if len(np.unique(i_data)) > 1:
@@ -49,6 +54,13 @@ def single_stats(
             print(f"--- {desc[i]} ---")
             print(f"PearsonR: {ipr:>8.4f}\np: {ipp:>15.4f}\nstd: {i_data.std():13.4f}")
             print(f"Max: {np.max(i_data):13.4f}\nMin: {np.min(i_data):13.4f}")
+            descriptions.append(desc[i])
+            pr.append(ipr)
+            pp.append(ipp)
+    order = np.argsort(np.abs(pr))[::-1]
+    chosen = np.asarray(descriptions)[order][:num_params]
+    print(f"Chosen vals: {' / '.join(chosen.tolist())}")
+    return chosen
 
 
 # ----------------------- PARAMETERS ------------------------------------
@@ -62,7 +74,7 @@ model_ind = None  # "!6" # 1
 # how the saved model should be named - None to not save
 save_model = None  # "esm_single"  # None
 # which data the model should use for fitting
-data_path = "esm_single_out"
+data_path = "esm_double_out"
 # to add a protein name to the used names e.g. "769bc" - empty [] to not add
 add_names = []
 # data of the added protein e.g. 75.3 - empty [] to not add
@@ -258,29 +270,37 @@ if num_replicas > 1:
     if save_plots:
         fig_kde.savefig("kde_plot.png")
 
+print("Hydrogen Bonds")
+hb_vals = single_stats(HB_DATA_DESC, h_bonds_data, target)
+print("\nHydrophobic Cluster")
+hy_vals = single_stats(HY_DATA_DESC, hydrophobic_cluster_data, target)
+print("\nSalt Bridges")
+sb_vals = single_stats(SB_DATA_DESC, salt_bridges_data, target)
+
 # order data according to original order
 salt_bridges_data = salt_bridges_data[ori_order_ind, :]
 h_bonds_data = h_bonds_data[ori_order_ind, :]
 hydrophobic_cluster_data = hydrophobic_cluster_data[ori_order_ind, :]
 
 # create DataFrames
-sb_df = pd.DataFrame(salt_bridges_data, index=p_names, columns=SB_DATA_DESC).round(2)
-hb_df = pd.DataFrame(h_bonds_data, index=p_names, columns=HB_DATA_DESC).round(2)
+sb_df = pd.DataFrame(salt_bridges_data, index=p_names, columns=SB_DATA_DESC).round(2)[
+    sb_vals
+]
+hb_df = pd.DataFrame(h_bonds_data, index=p_names, columns=HB_DATA_DESC).round(2)[
+    hb_vals
+]
 hy_df = pd.DataFrame(
     hydrophobic_cluster_data, index=p_names, columns=HY_DATA_DESC
-).round(2)
+).round(2)[hy_vals]
 
-print("Hydrogen Bonds")
-single_stats(HB_DATA_DESC, h_bonds_data, target)
-print("\nHydrophobic Cluster")
-single_stats(HY_DATA_DESC, hydrophobic_cluster_data, target)
-print("\nSalt Bridges")
-single_stats(SB_DATA_DESC, salt_bridges_data, target)
 
 create_best_model(
     hb_df,
     hy_df,
     sb_df,
+    hb_vals,
+    hy_vals,
+    sb_vals,
     target,
     p_names,
     save_plots,

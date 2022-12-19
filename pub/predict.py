@@ -1,6 +1,7 @@
 import os
 import sys
 import itertools
+import json
 
 import numpy as np
 import pandas as pd
@@ -25,9 +26,11 @@ np.set_printoptions(threshold=sys.maxsize)
 # names of proteins for which data is available but are not in original p_names
 p_names = np.append(p_names, ["769bc", "N0"])
 # name of the saved model in saved_models/
-model_name = "esm_double_5"
+model_name = "af_all"
 # data of proteins the model should use for predictions
-data_dir = "esm_double_out"
+data_dir = "af_all_out"
+# replace None with file_path.json to store output - will be stored in 'results' 
+save_results = None
 # -----------------------------------------------------------------------
 
 
@@ -62,9 +65,9 @@ hy_df = pd.DataFrame(
 ).round(2)
 
 # attributes used
-hb_vals = HB_DATA_DESC[HB_SELE]
-hy_vals = HY_DATA_DESC[HY_SELE]
-sb_vals = SB_DATA_DESC[SB_SELE]
+hb_vals = HB_SELE
+hy_vals = HY_SELE
+sb_vals = SB_SELE
 # make one big DataFrame
 master_frame = pd.concat(
     [hb_df[hb_vals], hy_df[hy_vals], sb_df[sb_vals]],
@@ -86,3 +89,10 @@ prediction_order = np.argsort(predictions)
 for i, j in zip(p_names[prediction_order], predictions[prediction_order]):
     print(f"{i:<6}: {j:0.1f}")
 print(" < ".join(p_names[prediction_order]))
+
+if save_results is not None:
+    if not os.path.isdir("results"):
+        os.mkdir("results")
+    res = dict(zip(p_names, predictions))
+    with open(os.path.join("results", save_results), "w") as res_file:
+        json.dump(res, res_file)

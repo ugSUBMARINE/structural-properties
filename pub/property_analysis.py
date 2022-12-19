@@ -50,7 +50,7 @@ HB_DATA_DESC = np.asarray(
         "MEAN BPN HB",
         "SUM BPN HB",
         "MAX NWS HB",
-        "MIN  NWS HB",
+        "MIN NWS HB",
         "MEAN NWS HB",
         "SUM NWS HB",
         "ICB",
@@ -58,22 +58,34 @@ HB_DATA_DESC = np.asarray(
 )
 
 # Index for selcted _DATA_DESC
-"""
 # md sim
-HB_SELE = [3, 4, 7]
-HY_SELE = [0, 3, 7]
-SB_SELE = [3, 6, 7]
+"""
+HB_SELE = ["SUM BPN HB", "MAX NWS HB", "SUM NWS HB"]
+HY_SELE = ["MAX CA", "SUM CA", "SUM CC"]
+SB_SELE = ["SUM IA SB", "MEAN NWS SB", "SUM NWS SB"]
 """
 """
 # esm_single
-HB_SELE = [2, 6, 0]
-HY_SELE = [0, 3, 4]
-SB_SELE = [6, 2, 7]
+HB_SELE = ["MEAN BPN HB", "MEAN NWS HB", "MAX BPN HB"]
+HY_SELE = ["MAX CA", "SUM CA", "MAX CC"]
+SB_SELE = ["MEAN NWS SB", "MEAN IA SB", "SUM NWS SB"]
+"""
 """
 # esm_double
-HB_SELE = [5, 4, 0]
-HY_SELE = [3, 0, 7]
-SB_SELE = [0, 4, 3]
+HB_SELE = ["MIN NWS HB", "MAX NWS HB", "MAX BPN HB"]
+HY_SELE = ["SUM CA", "MAX CA", "SUM CC"]
+SB_SELE = ["MAX IA SB", "MAX NWS SB", "SUM IA SB"]
+"""
+"""
+# single struct
+HB_SELE = ["MEAN NWS HB", "MEAN BPN HB", "MAX BPN HB"]
+HY_SELE = ["MAX CA", "MAX CC", "SUM CC"]
+SB_SELE = ["SUM NWS SB", "ICB SB", "SUM IA SB"]
+"""
+# all af
+HB_SELE = ["MAX NWS HB", "MIN NWS HB", "MAX BPN HB"]
+HY_SELE = ["MAX CA", "MEAN CC", "MAX CC"]
+SB_SELE = ["MAX IA SB", "MAX NWS SB", "ICB SB"]
 
 
 def analysis(
@@ -222,6 +234,9 @@ def create_best_model(
     hb_dataframe: pd.DataFrame,
     hy_dataframe: pd.DataFrame,
     sb_dataframe: pd.DataFrame,
+    hb_vals: list | np.ndarray[tuple[int], np.dtype[str]],
+    hy_vals: list | np.ndarray[tuple[int], np.dtype[str]],
+    sb_vals: list | np.ndarray[tuple[int], np.dtype[str]],
     cv: list[int | float] | np.ndarray[tuple[int], np.dtype[int | float]],
     p_names: list[str],
     save_plot: bool = False,
@@ -258,15 +273,12 @@ def create_best_model(
     )
 
     # values of the DataFrames used for fitting
-    hb_vals = HB_DATA_DESC[HB_SELE]
-    hy_vals = HY_DATA_DESC[HY_SELE]
-    sb_vals = SB_DATA_DESC[SB_SELE]
+    # hb_vals = HB_SELE
+    # hy_vals = HY_SELE
+    # sb_vals = SB_SELE
 
     # make one big DataFrame
-    master_frame = pd.concat(
-        [hb_dataframe[hb_vals], hy_dataframe[hy_vals], sb_dataframe[sb_vals]],
-        axis=1,
-    )
+    master_frame = pd.concat([hb_dataframe, hy_dataframe, sb_dataframe], axis=1)
     # make all single, double, ... NumMastervals combinations and test their performance
     master_vals = list(hb_vals) + list(hy_vals) + list(sb_vals)
     used_combinations = []
@@ -304,9 +316,9 @@ def create_best_model(
                 des_num_param = int(chose_model_ind[1:])
             else:
                 des_num_param = int(chose_model_ind)
-            params = np.asarray([
-                    len(i) for i in used_combinations[performance_order][:10]
-            ])
+            params = np.asarray(
+                [len(i) for i in used_combinations[performance_order][:10]]
+            )
             # model with the closest number of parameters of the top 10 models
             best_comp = performance_order[np.argmin(np.abs(params - des_num_param))]
     print(f"Chosen combination: {used_combinations[best_comp]}")

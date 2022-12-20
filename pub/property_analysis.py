@@ -57,36 +57,6 @@ HB_DATA_DESC = np.asarray(
     ]
 )
 
-# Index for selcted _DATA_DESC
-# md sim
-"""
-HB_SELE = ["SUM BPN HB", "MAX NWS HB", "SUM NWS HB"]
-HY_SELE = ["MAX CA", "SUM CA", "SUM CC"]
-SB_SELE = ["SUM IA SB", "MEAN NWS SB", "SUM NWS SB"]
-"""
-"""
-# esm_single
-HB_SELE = ["MEAN BPN HB", "MEAN NWS HB", "MAX BPN HB"]
-HY_SELE = ["MAX CA", "SUM CA", "MAX CC"]
-SB_SELE = ["MEAN NWS SB", "MEAN IA SB", "SUM NWS SB"]
-"""
-"""
-# esm_double
-HB_SELE = ["MIN NWS HB", "MAX NWS HB", "MAX BPN HB"]
-HY_SELE = ["SUM CA", "MAX CA", "SUM CC"]
-SB_SELE = ["MAX IA SB", "MAX NWS SB", "SUM IA SB"]
-"""
-"""
-# single struct
-HB_SELE = ["MEAN NWS HB", "MEAN BPN HB", "MAX BPN HB"]
-HY_SELE = ["MAX CA", "MAX CC", "SUM CC"]
-SB_SELE = ["SUM NWS SB", "ICB SB", "SUM IA SB"]
-"""
-# all af
-HB_SELE = ["MAX NWS HB", "MIN NWS HB", "MAX BPN HB"]
-HY_SELE = ["MAX CA", "MEAN CC", "MAX CC"]
-SB_SELE = ["MAX IA SB", "MAX NWS SB", "ICB SB"]
-
 
 def analysis(
     comp_value: np.ndarray[tuple[int], np.dtype[float]],
@@ -129,59 +99,31 @@ def analysis(
         - models:
           statsmodels regression model instance of each model
     """
-    # fit a model to each combinations and calculate the stats of the model
-    #  and calculate for each comb the MSE using a LeaveOneOut approach
-    r2 = []
-    r2a = []
-    aics = []
-    bics = []
-    mses = []
-    f_values = []
-    models = []
-    combs_scores = []
-    for i in combs:
-        if isinstance(df_list, np.ndarray):
-            reg_data = df_list
-        else:
-            # reshape data as needed
-            stacked_df = []
-            for di, d in enumerate(df_list):
-                stacked_df.append(np.asarray(d[i[di]]).reshape(-1, 1))
-            reg_data = np.column_stack(stacked_df)
 
-        # Ordinary Least Square Model
-        reg_data = sm.add_constant(reg_data)
-        model = sm.OLS(comp_value, reg_data).fit()
+    # Ordinary Least Square Model
+    df_list = sm.add_constant(df_list)
+    model = sm.OLS(comp_value, df_list).fit()
 
-        # LeaveOneOut model
-        cv = model_selection.LeaveOneOut()
-        LOO_model = linear_model.LinearRegression()
-        scores = model_selection.cross_val_score(
-            LOO_model,
-            reg_data,
-            comp_value,
-            scoring="neg_mean_squared_error",
-            cv=cv,
-        )
+    # LeaveOneOut model
+    cv = model_selection.LeaveOneOut()
+    LOO_model = linear_model.LinearRegression()
+    scores = model_selection.cross_val_score(
+        LOO_model,
+        df_list,
+        comp_value,
+        scoring="neg_mean_squared_error",
+        cv=cv,
+    )
 
-        # store results
-        aics.append(model.aic)
-        bics.append(model.bic)
-        f_values.append(model.fvalue)
-        mses.append(model.mse_model)
-        r2.append(model.rsquared)
-        r2a.append(model.rsquared_adj)
-        models.append(model)
-        combs_scores.append(np.sqrt(np.mean(np.abs(scores))))
-
-    r2 = np.asarray(r2)
-    r2a = np.asarray(r2a)
-    aics = np.asarray(aics)
-    bics = np.asarray(bics)
-    mses = np.asarray(mses)
-    f_values = np.asarray(f_values)
-    combs_scores = np.asarray(combs_scores)
-    return combs_scores, r2, r2a, aics, bics, mses, f_values, models
+    # store results
+    aics = np.asarray(model.aic)
+    bics = np.asarray(model.bic)
+    f_values = np.asarray(model.fvalue)
+    mses = np.asarray(model.mse_model)
+    r2 = np.asarray(model.rsquared)
+    r2a = np.asarray(model.rsquared_adj)
+    combs_scores = np.asarray(np.sqrt(np.mean(np.abs(scores))))
+    return combs_scores, r2, r2a, aics, bics, mses, f_values, model
 
 
 def use_model(
@@ -272,11 +214,6 @@ def create_best_model(
         f"{' < '.join(p_names[np.argsort(cv)].tolist())}"
     )
 
-    # values of the DataFrames used for fitting
-    # hb_vals = HB_SELE
-    # hy_vals = HY_SELE
-    # sb_vals = SB_SELE
-
     # make one big DataFrame
     master_frame = pd.concat([hb_dataframe, hy_dataframe, sb_dataframe], axis=1)
     # make all single, double, ... NumMastervals combinations and test their performance
@@ -287,7 +224,7 @@ def create_best_model(
         comb_i = list(itertools.combinations(master_vals, i))
         for c in comb_i:
             res = analysis(cv, [c], np.asarray(master_frame.loc[:, c]))
-            performances_combinations.append([i[0] for i in res])
+            performances_combinations.append(list(res))
             used_combinations.append(c)
     performances_combinations = np.asarray(performances_combinations)
     used_combinations = np.asarray(used_combinations, dtype=object)

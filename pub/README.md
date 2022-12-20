@@ -9,18 +9,33 @@ Then the analysis can be run with `python3 run_rmsf_analysis.py`
 
 
 ## Property analysis
-In order to run the property analysis different steps need to be done:
+To perform the analysis, the following steps must be carried out:
 *   Calculating the data for each protein with `python3 calc_prop.py`
+    * all .pdb files need to be stored in one directory
     * In this file the name/path to the directory containing all protein structures need to be set in `struct_pub` and the names of the files (without the .pdb) need to be set in `p_names`. 
     * This will calculate H-Bonds, hydrophobic cluster and salt bridges and store them in `parent_name` which has also to be set in the files `PARAMETERS` section.
 * run `python3 run_property_analysis.py`
-    * The first time one just needs to set the `data_path` to the same as `parent_name` chosen in `calc_prop`. 
-    * Checking the single correlations and choosing the highest correlating ones yields to the best results.
-        * The indices of the highest correlating attributes need to be set in `property_analysis.py` in `HB_SELE` for H-Bonds, in `SB_SELE` for salt bridges and in `HY_SELE` for hydrophobic cluster. 
-        * The models with the best parameters can be seen and the index can be used to test and/or store this model (normally done in the next step)
-    * Run `python3 run_property_analysis.py` again but in addition to the selected attributes, change `save_model` from None to a desired name and `model_ind` to either None to use the model with the best (lowest) mean squared error, e.g. `1` for the model with index 1 or e.g. "!4" for the best model of the best 10 that is closest to having 4 parameters to store the model and also it's used parameters from `HB_SELE`, `SB_SELE` and `HY_SELE`.
+    * Set the `data_path` to the same as `parent_name` chosen in `calc_prop`
+    * Define the model name in `save_model` using a desired name instead of None
+    * Set `model_ind` to either `None` to use the model with the best (lowest) mean squared error, e.g. `1` for the model with index 1 or e.g. `"!4"` for the best model of the best 10 that is closest to having 4 parameters to store the model and also it's used attributes from `*_DATA_DESC`. 
 * run `python3 predict.py`
     * Set the `model_name` like specified in `save_model` from `run_property_analysis.py` and the `data_dir` like `parent_name` from `calc_prop.py`.
     * This will predict the desired value and the ordering of all proteins
 
+
 For all files, if `p_names` are different than the set on add `p_names = np.array(["Protein1", "Protein2"])` in the `PARAMETERS` section.
+
+### File structures from property analysis
+File structure created by `calc_prop.py`
+```
+'- parent_name
+    '-PROTEIN_NAME
+        |- h_bonds
+        |   '-PROTEIN_NAME.csv
+        |- hydrophobic_cluster
+        |   '-PROTEIN_NAME.csv
+        '- saltbridges
+            '-PROTEIN_NAME.csv
+```
+
+

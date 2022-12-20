@@ -13,6 +13,7 @@ from run_rmsf_analysis import p_names, temp_cd, activity
 from properties import HydrophobicClusterOwn, SaltBridges
 
 np.set_printoptions(threshold=sys.maxsize)
+plt.style.use("default")
 plt.rcParams.update({"font.size": 25})
 plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.tab10.colors)
 
@@ -50,30 +51,12 @@ HB_DATA_DESC = np.asarray(
         "MEAN BPN HB",
         "SUM BPN HB",
         "MAX NWS HB",
-        "MIN  NWS HB",
+        "MIN NWS HB",
         "MEAN NWS HB",
         "SUM NWS HB",
         "ICB",
     ]
 )
-
-# Index for selcted _DATA_DESC
-"""
-# md sim
-HB_SELE = [3, 4, 7]
-HY_SELE = [0, 3, 7]
-SB_SELE = [3, 6, 7]
-"""
-"""
-# esm_single
-HB_SELE = [2, 6, 0]
-HY_SELE = [0, 3, 4]
-SB_SELE = [6, 2, 7]
-"""
-# esm_double
-HB_SELE = [5, 4, 0]
-HY_SELE = [3, 0, 7]
-SB_SELE = [0, 4, 3]
 
 
 def analysis(
@@ -117,59 +100,31 @@ def analysis(
         - models:
           statsmodels regression model instance of each model
     """
-    # fit a model to each combinations and calculate the stats of the model
-    #  and calculate for each comb the MSE using a LeaveOneOut approach
-    r2 = []
-    r2a = []
-    aics = []
-    bics = []
-    mses = []
-    f_values = []
-    models = []
-    combs_scores = []
-    for i in combs:
-        if isinstance(df_list, np.ndarray):
-            reg_data = df_list
-        else:
-            # reshape data as needed
-            stacked_df = []
-            for di, d in enumerate(df_list):
-                stacked_df.append(np.asarray(d[i[di]]).reshape(-1, 1))
-            reg_data = np.column_stack(stacked_df)
 
-        # Ordinary Least Square Model
-        reg_data = sm.add_constant(reg_data)
-        model = sm.OLS(comp_value, reg_data).fit()
+    # Ordinary Least Square Model
+    df_list = sm.add_constant(df_list)
+    model = sm.OLS(comp_value, df_list).fit()
 
-        # LeaveOneOut model
-        cv = model_selection.LeaveOneOut()
-        LOO_model = linear_model.LinearRegression()
-        scores = model_selection.cross_val_score(
-            LOO_model,
-            reg_data,
-            comp_value,
-            scoring="neg_mean_squared_error",
-            cv=cv,
-        )
+    # LeaveOneOut model
+    cv = model_selection.LeaveOneOut()
+    LOO_model = linear_model.LinearRegression()
+    scores = model_selection.cross_val_score(
+        LOO_model,
+        df_list,
+        comp_value,
+        scoring="neg_mean_squared_error",
+        cv=cv,
+    )
 
-        # store results
-        aics.append(model.aic)
-        bics.append(model.bic)
-        f_values.append(model.fvalue)
-        mses.append(model.mse_model)
-        r2.append(model.rsquared)
-        r2a.append(model.rsquared_adj)
-        models.append(model)
-        combs_scores.append(np.sqrt(np.mean(np.abs(scores))))
-
-    r2 = np.asarray(r2)
-    r2a = np.asarray(r2a)
-    aics = np.asarray(aics)
-    bics = np.asarray(bics)
-    mses = np.asarray(mses)
-    f_values = np.asarray(f_values)
-    combs_scores = np.asarray(combs_scores)
-    return combs_scores, r2, r2a, aics, bics, mses, f_values, models
+    # store results
+    aics = np.asarray(model.aic)
+    bics = np.asarray(model.bic)
+    f_values = np.asarray(model.fvalue)
+    mses = np.asarray(model.mse_model)
+    r2 = np.asarray(model.rsquared)
+    r2a = np.asarray(model.rsquared_adj)
+    combs_scores = np.asarray(np.sqrt(np.mean(np.abs(scores))))
+    return combs_scores, r2, r2a, aics, bics, mses, f_values, model
 
 
 def use_model(
@@ -199,7 +154,7 @@ def use_model(
         - func1return
           description
     """
-    # calculate pearson R for the predictions
+    # calculate Pearson R for the predictions
     predictions = model.predict(np.column_stack((np.ones(len(data)), data)))
     print(f"\nPredicted order:\n{' < '.join(p_names[np.argsort(predictions)])}")
     pr, pp = stats.pearsonr(comp_value, predictions)
@@ -222,6 +177,9 @@ def create_best_model(
     hb_dataframe: pd.DataFrame,
     hy_dataframe: pd.DataFrame,
     sb_dataframe: pd.DataFrame,
+    hb_vals: list | np.ndarray[tuple[int], np.dtype[str]],
+    hy_vals: list | np.ndarray[tuple[int], np.dtype[str]],
+    sb_vals: list | np.ndarray[tuple[int], np.dtype[str]],
     cv: list[int | float] | np.ndarray[tuple[int], np.dtype[int | float]],
     p_names: list[str],
     save_plot: bool = False,
@@ -229,7 +187,7 @@ def create_best_model(
     save_model: str | None = None,
     chose_model_ind: int | None = None,
 ) -> None:
-    """find the model that describes the data the best without overfitting
+    """find the model that describes the data the best without over fitting
     :parameter
         - hb_dataframe:
           DataFrame containing all hydrogen bond attributes
@@ -257,16 +215,8 @@ def create_best_model(
         f"{' < '.join(p_names[np.argsort(cv)].tolist())}"
     )
 
-    # values of the DataFrames used for fitting
-    hb_vals = HB_DATA_DESC[HB_SELE]
-    hy_vals = HY_DATA_DESC[HY_SELE]
-    sb_vals = SB_DATA_DESC[SB_SELE]
-
     # make one big DataFrame
-    master_frame = pd.concat(
-        [hb_dataframe[hb_vals], hy_dataframe[hy_vals], sb_dataframe[sb_vals]],
-        axis=1,
-    )
+    master_frame = pd.concat([hb_dataframe, hy_dataframe, sb_dataframe], axis=1)
     # make all single, double, ... NumMastervals combinations and test their performance
     master_vals = list(hb_vals) + list(hy_vals) + list(sb_vals)
     used_combinations = []
@@ -275,7 +225,7 @@ def create_best_model(
         comb_i = list(itertools.combinations(master_vals, i))
         for c in comb_i:
             res = analysis(cv, [c], np.asarray(master_frame.loc[:, c]))
-            performances_combinations.append([i[0] for i in res])
+            performances_combinations.append(list(res))
             used_combinations.append(c)
     performances_combinations = np.asarray(performances_combinations)
     used_combinations = np.asarray(used_combinations, dtype=object)
@@ -304,9 +254,9 @@ def create_best_model(
                 des_num_param = int(chose_model_ind[1:])
             else:
                 des_num_param = int(chose_model_ind)
-            params = np.asarray([
-                    len(i) for i in used_combinations[performance_order][:10]
-            ])
+            params = np.asarray(
+                [len(i) for i in used_combinations[performance_order][:10]]
+            )
             # model with the closest number of parameters of the top 10 models
             best_comp = performance_order[np.argmin(np.abs(params - des_num_param))]
     print(f"Chosen combination: {used_combinations[best_comp]}")

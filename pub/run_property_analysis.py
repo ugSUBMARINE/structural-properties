@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from scipy import stats
-from sklearn.neighbors import KernelDensity
 import statsmodels.api as sm
 
 
@@ -14,14 +13,12 @@ from property_analysis import (
     HY_DATA_DESC,
     HB_DATA_DESC,
     create_best_model,
-    HB_SELE,
-    HY_SELE,
-    SB_SELE,
 )
 from run_rmsf_analysis import temp_cd, activity, p_names
 from properties import SaltBridges, HydrophobicClusterOwn
 
 np.set_printoptions(threshold=sys.maxsize)
+plt.style.use("default")
 plt.rcParams.update({"font.size": 23})
 plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.tab10.colors)
 
@@ -30,7 +27,8 @@ def single_stats(
     desc: list[str],
     property_data: np.ndarray[tuple[int, int], np.dtype[int | float]],
     cv: list[int | float] | np.ndarray[tuple[int], np.dtype[int | float]],
-) -> None:
+    num_params: int = 3,
+) -> np.ndarray[tuple[int], np.dtype[str]]:
     """calculate and print correlation between single properties and experimental data
     :parameter
         - desc:
@@ -39,9 +37,13 @@ def single_stats(
           calculated values for each property
         - cv:
           experimental data to compare against
+        - num_params:
+          how many parameters should be return
     :return
-        - None
+        - descriptions
+          *_DATA_DESC with the highest PearsonR
     """
+    descriptions, pr, pp = [], [], []
     for i in range(len(desc)):
         i_data = property_data[:, i]
         if len(np.unique(i_data)) > 1:
@@ -49,6 +51,13 @@ def single_stats(
             print(f"--- {desc[i]} ---")
             print(f"PearsonR: {ipr:>8.4f}\np: {ipp:>15.4f}\nstd: {i_data.std():13.4f}")
             print(f"Max: {np.max(i_data):13.4f}\nMin: {np.min(i_data):13.4f}")
+            descriptions.append(desc[i])
+            pr.append(ipr)
+            pp.append(ipp)
+    order = np.lexsort((pp, -np.abs(pr)))
+    chosen = np.asarray(descriptions)[order][:num_params]
+    print(f"Chosen vals: {' / '.join(chosen.tolist())}")
+    return chosen
 
 
 # ----------------------- PARAMETERS ------------------------------------
@@ -62,13 +71,25 @@ model_ind = None  # "!6" # 1
 # how the saved model should be named - None to not save
 save_model = None  # "esm_single"  # None
 # which data the model should use for fitting
-data_path = "esm_single_out"
+data_path = "af_all_out"
 # to add a protein name to the used names e.g. "769bc" - empty [] to not add
 add_names = []
 # data of the added protein e.g. 75.3 - empty [] to not add
 add_temp = []
 # data to fit the model to (ndarray[tuple[int], np.dtype[int|float]])
 target = temp_cd
+# set number of attributes to choose
+# H- Bonds
+hb_param_num = 3
+# Hydrophobic Cluster
+hy_param_num = 3
+# Salt Bridges
+sb_param_num = 3
+# if chosen attributes in *_vals should be overwritten
+# replace ndarray[tuple[int], np.dtype[str]]
+ow_hb_vals = None
+ow_hy_vals = None
+ow_sb_vals = None
 # -----------------------------------------------------------------------
 
 target = np.append(target, add_temp)
@@ -76,192 +97,61 @@ print(" < ".join(target[np.argsort(target)].astype(str)))
 p_names = np.append(p_names, add_names)
 # name of the folders where the data is stored
 data_folders = ["saltbridges", "h_bonds", "hydrophobic_cluster"]
-# how proteins are originally ordered (by p_names)
-p_name_order = dict(zip(p_names, np.arange(len(p_names))))
-# in which order the protein files are read and stored
-order = []
-salt_bridges_data = []
-h_bonds_data = []
-hydrophobic_cluster_data = []
+data_pos = dict(zip(data_folders, np.arange(len(data_folders))))
+data = []
+for i in data_folders:
+    data.append([])
 
-fig, ax = plt.subplots(
-    3, np.max([len(HB_SELE), len(HY_SELE), len(SB_SELE)]), figsize=(32, 18)
-)
-fig_kde, ax_kde = plt.subplots(
-    3, np.max([len(HB_SELE), len(HY_SELE), len(SB_SELE)]), figsize=(32, 18)
-)
+mulit_data = []
+for i in data_folders:
+    mulit_data.append([])
 
-# iterate over all directories where the data for each protein and frame is stored
-for subdir, dirs, files in os.walk(os.path.expanduser(data_path)):
-    # which data we are currently reading
-    data_kind = os.path.split(subdir)[-1]
-    if data_kind in data_folders:
-        # get the salt bridge frame
-        if data_kind == data_folders[0]:
-            cur_protein = os.path.split(os.path.split(subdir)[0])[-1]
-            if cur_protein in p_names:
-                order.append(cur_protein)
-                sb_data = []
-                # calculation of salt bridge data for each frame
-                for f in files:
-                    sb = SaltBridges(os.path.join(subdir, f), -1, SB_DATA_DESC)
-                    sb_data.append(list(sb.stats())[:-1])
-                if num_replicas > 1:
-                    salt_bridges_data.append(np.median(sb_data, axis=0))
-                    sb_data = np.asarray(sb_data, dtype=float)
-                    hb_num = len(HB_SELE)
-                    for ci, i in enumerate(SB_SELE):
-                        hb_num = ci
-                        # scatter plot
-                        ax[2, hb_num].scatter(
-                            [p_name_order[cur_protein]] * num_replicas,
-                            sb_data[:, i],
-                            label=cur_protein,
-                        )
-                        ax[2, hb_num].plot(
-                            [
-                                p_name_order[cur_protein] - 0.2,
-                                p_name_order[cur_protein] + 0.2,
-                            ],
-                            [np.median(sb_data[:, i])] * 2,
-                            linewidth=2,
-                            marker="x",
-                            color="black",
-                        )
-                        ax[2, hb_num].set_title("SaltBridges")
-                        ax[2, hb_num].set_ylabel(SB_DATA_DESC[i])
-                        ax[2, ci].set_xticks(
-                            np.arange(len(p_names)), p_names, rotation=45
-                        )
+# for each protein
+for i in p_names:
+    # for each data attribute
+    for a in data_folders:
+        # csv dir path
+        c_path = os.path.join(data_path, i, a)
+        # all csv files
+        files = os.listdir(c_path)
+        # calculate data
+        inter_data = []
+        for c in files:
+            ac_path = os.path.join(c_path, c)
+            if a == "saltbridges":
+                sb = SaltBridges(ac_path, -1, SB_DATA_DESC)
+                inter_data.append(list(sb.stats())[:-1])
+            elif a == "h_bonds":
+                hb = SaltBridges(ac_path, -1, HB_DATA_DESC)
+                inter_data.append(list(hb.stats()[:-1]))
+            else:
+                hy = HydrophobicClusterOwn(ac_path, HY_DATA_DESC)
+                inter_data.append(list(hy.stats())[:-1])
+        # store data depending on one or multiple files per protein
+        if len(inter_data) == 1:
+            data[data_pos[a]].append(inter_data[0])
+        else:
+            mulit_data[data_pos[a]].append(inter_data)
+            data[data_pos[a]].append(np.median(inter_data, axis=0))
 
-                        # kernel density estimation
-                        kde = sm.nonparametric.KDEUnivariate(sb_data[:, i])
-                        kde.fit()
-                        ax_kde[2, hb_num].fill(kde.support, kde.density, alpha=0.3)
-                        ax_kde[2, hb_num].plot(
-                            kde.support, kde.density, label=cur_protein
-                        )
-                        ax_kde[2, hb_num].set_ylabel("Density")
-                        ax_kde[2, hb_num].set_xlabel(SB_DATA_DESC[i])
-                else:
-                    salt_bridges_data.append(np.asarray(sb_data[0]))
+salt_bridges_data = np.asarray(data[data_pos["saltbridges"]])
+h_bonds_data = np.asarray(data[data_pos["h_bonds"]])
+hydrophobic_cluster_data = np.asarray(data[data_pos["hydrophobic_cluster"]])
 
-        # get hydrogen bond frame
-        if data_kind == data_folders[1]:
-            cur_protein = os.path.split(os.path.split(subdir)[0])[-1]
-            if cur_protein in p_names:
-                hb_data = []
-                # calculation of hydrogen bond data for each frame
-                for f in files:
-                    hb = SaltBridges(os.path.join(subdir, f), -1, HB_DATA_DESC)
-                    hb_data.append(list(hb.stats()[:-1]))
-                if num_replicas > 1:
-                    h_bonds_data.append(np.median(hb_data, axis=0))
-                    hb_data = np.asarray(hb_data)
-                    for ci, i in enumerate(HB_SELE):
-                        # scatter plot
-                        ax[0, ci].scatter(
-                            [p_name_order[cur_protein]] * num_replicas,
-                            hb_data[:, i],
-                            label=cur_protein,
-                        )
-                        ax[0, ci].plot(
-                            [
-                                p_name_order[cur_protein] - 0.2,
-                                p_name_order[cur_protein] + 0.2,
-                            ],
-                            [np.median(hb_data[:, i])] * 2,
-                            linewidth=2,
-                            marker="x",
-                            color="black",
-                        )
-                        ax[0, ci].set_title("Hydrogen Bonds")
-                        ax[0, ci].set_ylabel(HB_DATA_DESC[i])
-                        ax[0, ci].tick_params(bottom=False, labelbottom=False)
+print("Hydrogen Bonds")
+hb_vals = single_stats(HB_DATA_DESC, h_bonds_data, target, hb_param_num)
+print("\nHydrophobic Cluster")
+hy_vals = single_stats(HY_DATA_DESC, hydrophobic_cluster_data, target, hy_param_num)
+print("\nSalt Bridges")
+sb_vals = single_stats(SB_DATA_DESC, salt_bridges_data, target, sb_param_num)
 
-                        # kernel density estimation
-                        kde = sm.nonparametric.KDEUnivariate(hb_data[:, i])
-                        kde.fit()
-                        ax_kde[0, ci].fill(kde.support, kde.density, alpha=0.3)
-                        ax_kde[0, ci].plot(kde.support, kde.density, label=cur_protein)
-                        ax_kde[0, ci].set_ylabel("Density")
-                        ax_kde[0, ci].set_xlabel(HB_DATA_DESC[i])
-                else:
-                    h_bonds_data.append(np.asarray(hb_data[0]))
-
-        # get hydrophobic cluster frame
-        if data_kind == data_folders[2]:
-            cur_protein = os.path.split(os.path.split(subdir)[0])[-1]
-            if cur_protein in p_names:
-                hy_data = []
-                # calculation of hydrophobic cluster data for each frame
-                for f in files:
-                    hy = HydrophobicClusterOwn(os.path.join(subdir, f), HY_DATA_DESC)
-                    hy_data.append(list(hy.stats())[:-1])
-                if num_replicas > 1:
-                    hydrophobic_cluster_data.append(np.median(hy_data, axis=0))
-                    hy_data = np.asarray(hy_data)
-                    for ci, i in enumerate(HY_SELE):
-                        # scatter plot
-                        ax[1, ci].scatter(
-                            [p_name_order[cur_protein]] * num_replicas,
-                            hy_data[:, i],
-                            label=cur_protein,
-                        )
-                        ax[1, ci].plot(
-                            [
-                                p_name_order[cur_protein] - 0.2,
-                                p_name_order[cur_protein] + 0.2,
-                            ],
-                            [np.median(hy_data[:, i])] * 2,
-                            linewidth=2,
-                            marker="x",
-                            color="black",
-                        )
-                        ax[1, ci].set_title("HydrophobicCluster")
-                        ax[1, ci].set_ylabel(HY_DATA_DESC[i])
-                        ax[1, ci].tick_params(bottom=False, labelbottom=False)
-
-                        # kernel density estimation
-                        kde = sm.nonparametric.KDEUnivariate(hy_data[:, i])
-                        kde.fit()
-                        ax_kde[1, ci].fill(kde.support, kde.density, alpha=0.3)
-                        ax_kde[1, ci].plot(kde.support, kde.density, label=cur_protein)
-                        ax_kde[1, ci].set_ylabel("Density")
-                        ax_kde[1, ci].set_xlabel(HY_DATA_DESC[i])
-                else:
-                    hydrophobic_cluster_data.append(np.asarray(hy_data[0]))
-
-salt_bridges_data = np.asarray(salt_bridges_data)
-h_bonds_data = np.asarray(h_bonds_data)
-hydrophobic_cluster_data = np.asarray(hydrophobic_cluster_data)
-
-order = np.asarray(order)
-# list of where proteins should be according to original order
-order_order = list(map(p_name_order.get, order))
-# indices to order proteins in the original order
-ori_order_ind = np.argsort(order_order)
-
-if num_replicas > 1:
-    fig.tight_layout(pad=5, w_pad=1.5, h_pad=1.5)
-    if save_plots:
-        fig.savefig("scatter_plot.png")
-    # create nice legend
-    leg_lines, leg_labels = ax_kde[0, 0].get_legend_handles_labels()
-    fig_kde.legend(
-        [leg_lines[ind] for ind in ori_order_ind],
-        [leg_labels[ind] for ind in ori_order_ind],
-        loc="lower center",
-        ncol=10,
-    )
-    fig_kde.tight_layout(pad=5, w_pad=1.5, h_pad=1.5)
-    if save_plots:
-        fig_kde.savefig("kde_plot.png")
-
-# order data according to original order
-salt_bridges_data = salt_bridges_data[ori_order_ind, :]
-h_bonds_data = h_bonds_data[ori_order_ind, :]
-hydrophobic_cluster_data = hydrophobic_cluster_data[ori_order_ind, :]
+# to be able to overwrite the *_vals
+if ow_hb_vals is not None:
+    hb_vals = ow_hb_vals
+if ow_hy_vals is not None:
+    hy_vals = ow_hy_vals
+if ow_sb_vals is not None:
+    sb_vals = ow_sb_vals
 
 # create DataFrames
 sb_df = pd.DataFrame(salt_bridges_data, index=p_names, columns=SB_DATA_DESC).round(2)
@@ -270,17 +160,13 @@ hy_df = pd.DataFrame(
     hydrophobic_cluster_data, index=p_names, columns=HY_DATA_DESC
 ).round(2)
 
-print("Hydrogen Bonds")
-single_stats(HB_DATA_DESC, h_bonds_data, target)
-print("\nHydrophobic Cluster")
-single_stats(HY_DATA_DESC, hydrophobic_cluster_data, target)
-print("\nSalt Bridges")
-single_stats(SB_DATA_DESC, salt_bridges_data, target)
-
 create_best_model(
-    hb_df,
-    hy_df,
-    sb_df,
+    hb_df[hb_vals],
+    hy_df[hy_vals],
+    sb_df[sb_vals],
+    hb_vals,
+    hy_vals,
+    sb_vals,
     target,
     p_names,
     save_plots,
@@ -288,3 +174,57 @@ create_best_model(
     save_model=save_model,
     chose_model_ind=model_ind,
 )
+
+if num_replicas > 1 and (show_plots or save_plots):
+    # can have higher indices than shown by single_stats because it shows
+    # only values which have more than one unique value
+    hb_ind = [int(np.argwhere(HB_DATA_DESC == i)) for i in hb_vals]
+    hy_ind = [int(np.argwhere(HY_DATA_DESC == i)) for i in hy_vals]
+    sb_ind = [int(np.argwhere(SB_DATA_DESC == i)) for i in sb_vals]
+
+    fig, ax = plt.subplots(
+        len(data_folders),
+        max([hb_param_num, hy_param_num, sb_param_num]),
+        figsize=(32, 18),
+    )
+    # p_names[0] = "BsPAD"
+    for i in range(len(data_folders)):
+        if data_folders[i] == "h_bonds":
+            att_inds = hb_ind
+            dn = "H- Bonds"
+            ddes = HB_DATA_DESC
+        elif data_folders[i] == "hydrophobic_cluster":
+            att_inds = hy_ind
+            dn = "Hydrophobic Cluster"
+            ddes = HY_DATA_DESC
+        elif data_folders[i] == "saltbridges":
+            att_inds = sb_ind
+            dn = "Salt Bridges"
+            ddes = SB_DATA_DESC
+        else:
+            raise KeyError("Invalid data folder encountered")
+        for p in range(len(p_names)):
+            for ca, a in enumerate(att_inds):
+                ax[i, ca].scatter(
+                    [p] * num_replicas,
+                    np.asarray(mulit_data[i][p])[:, a],
+                    label=p_names[p],
+                )
+                ax[i, ca].plot(
+                    [p - 0.2, p + 0.2],
+                    [data[i][p][a]] * 2,
+                    color="black",
+                    marker="x",
+                    linewidth=2,
+                )
+                ax[i, ca].set_title(dn)
+                ax[i, ca].set_ylabel(ddes[a])
+                if i == len(data_folders) - 1:
+                    ax[i, ca].set_xticks(np.arange(len(p_names)), p_names, rotation=45)
+                else:
+                    ax[i, ca].tick_params(bottom=False, labelbottom=False)
+    fig.tight_layout(pad=5, w_pad=1.5, h_pad=1.5)
+    if save_plots:
+        fig.savefig("att_scatter.png")
+    if show_plots:
+        plt.show()

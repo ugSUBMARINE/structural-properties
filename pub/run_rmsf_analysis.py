@@ -185,6 +185,7 @@ if __name__ == "__main__":
     # plot to compare the RMSF values of each protein against all other proteins
     fig, ax = plt.subplots(2, 5, sharex="col", sharey="row", figsize=(32, 18))
     c = 0
+    # p_names = [i.replace("4alb", "BsPAD") for i in p_names]
     for i in range(len(p_names)):
         if i % 2 == 0:
             row = 0

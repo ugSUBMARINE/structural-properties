@@ -13,6 +13,7 @@ from run_rmsf_analysis import p_names, temp_cd, activity
 from properties import HydrophobicClusterOwn, SaltBridges
 
 np.set_printoptions(threshold=sys.maxsize)
+plt.style.use("default")
 plt.rcParams.update({"font.size": 25})
 plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.tab10.colors)
 
@@ -153,7 +154,7 @@ def use_model(
         - func1return
           description
     """
-    # calculate pearson R for the predictions
+    # calculate Pearson R for the predictions
     predictions = model.predict(np.column_stack((np.ones(len(data)), data)))
     print(f"\nPredicted order:\n{' < '.join(p_names[np.argsort(predictions)])}")
     pr, pp = stats.pearsonr(comp_value, predictions)
@@ -186,7 +187,7 @@ def create_best_model(
     save_model: str | None = None,
     chose_model_ind: int | None = None,
 ) -> None:
-    """find the model that describes the data the best without overfitting
+    """find the model that describes the data the best without over fitting
     :parameter
         - hb_dataframe:
           DataFrame containing all hydrogen bond attributes

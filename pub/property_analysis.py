@@ -186,6 +186,7 @@ def create_best_model(
     show_plot: bool = False,
     save_model: str | None = None,
     chose_model_ind: int | None = None,
+    force_cmi: bool = False,
 ) -> None:
     """find the model that describes the data the best without over fitting
     :parameter
@@ -206,7 +207,9 @@ def create_best_model(
         - save_model:
           to store model use filepath where the model should be stored
         - chose_model_ind:
-          index of the 10 best models that should be used (and saved )
+          index of the 10 best models that should be used (and saved)
+        - force_cmi:
+          if chose_model_ind is not under the best 10 - no model gets returned
     :return
         - None
     """
@@ -258,7 +261,11 @@ def create_best_model(
                 [len(i) for i in used_combinations[performance_order][:10]]
             )
             # model with the closest number of parameters of the top 10 models
-            best_comp = performance_order[np.argmin(np.abs(params - des_num_param))]
+            param_diff = np.abs(params - des_num_param)
+            best_comp = performance_order[np.argmin(param_diff)]
+            if force_cmi and np.min(param_diff) != 0:
+                print("Failed to find model with expected number of parameters")
+                return
     print(f"Chosen combination: {used_combinations[best_comp]}")
     use_model(
         cv,

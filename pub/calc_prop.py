@@ -25,14 +25,14 @@ def check_dir(path: str) -> None:
 
 
 def calculate(
-    parent_name: str,
+    out_dir: str,
     struct_dir: str,
     add_names: list | None = None,
     p_names_in: np.ndarray[tuple[int], np.dtype[str]] = None,
 ):
     """calculate properties for all given structures
     :parameter
-        - parent_name:
+        - out_dir:
           output directory name
         - struct_dir:
           path to the directory containing all structures
@@ -53,12 +53,8 @@ def calculate(
     p_names = np.append(p_names, add_names)
 
     # create dir to store results
-    check_dir(parent_name)
+    check_dir(out_dir)
     for i in p_names:
-        # base dir for storage of data
-        i_base_path = os.path.join(parent_name, i)
-        check_dir(i_base_path)
-
         # to be compatible with structures files
         h_path = os.path.join(struct_dir, i + "_H.pdb")
         if os.path.isfile(h_path):
@@ -68,31 +64,23 @@ def calculate(
         print(file_path)
 
         # calculate H-bonds, salt bridges, hydrophobic cluster and store their files
-        hb_path = os.path.join(i_base_path, "h_bonds")
-        check_dir(hb_path)
         find_h_bonds(
             file_path,
-            create_file=f"{hb_path}/{i}",
+            create_file=f"{out_dir}/{i}_hb",
             silent=True,
         )
-
-        sb_path = os.path.join(i_base_path, "saltbridges")
-        check_dir(sb_path)
         find_saltbridges(
             file_path,
-            create_file=f"{sb_path}/{i}",
+            create_file=f"{out_dir}/{i}_sb",
             silent=True,
         )
-
-        hy_path = os.path.join(i_base_path, "hydrophobic_cluster")
-        check_dir(hy_path)
         hydr_cluster(
             file_path,
-            create_file=f"{hy_path}/{i}",
+            create_file=f"{out_dir}/{i}_hy",
             silent=True,
         )
 
 
 if __name__ == "__main__":
     pass
-    calculate("test_out", "esm_double", ["N0", "769bc"])
+    calculate("structures_out", "structures/", ["N0", "769bc"])

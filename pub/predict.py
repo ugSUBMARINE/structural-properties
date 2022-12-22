@@ -16,6 +16,7 @@ from property_analysis import (
 )
 from run_rmsf_analysis import temp_cd, activity, p_names
 from properties import SaltBridges, HydrophobicClusterOwn
+from run_property_analysis import get_data
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -43,30 +44,9 @@ def predict(
     if add is not None:
         p_names = np.append(p_names, add)
     # reading and calculating data for each protein
-    salt_bridges_data = []
-    h_bonds_data = []
-    hydrophobic_cluster_data = []
-    for i in p_names:
-        hb = SaltBridges(
-            os.path.join(f"{data_dir}/{i}/h_bonds/{i}.csv"), -1, HB_DATA_DESC
-        )
-        h_bonds_data.append(list(hb.stats())[:-1])
-
-        sb = SaltBridges(
-            os.path.join(f"{data_dir}/{i}/saltbridges/{i}.csv"), -1, SB_DATA_DESC
-        )
-        salt_bridges_data.append(list(sb.stats()[:-1]))
-
-        hy = HydrophobicClusterOwn(
-            os.path.join(f"{data_dir}/{i}/hydrophobic_cluster/{i}.csv"),
-            HY_DATA_DESC,
-        )
-        hydrophobic_cluster_data.append(list(hy.stats())[:-1])
-    print("data calculation done")
-
-    salt_bridges_data = np.asarray(salt_bridges_data)
-    h_bonds_data = np.asarray(h_bonds_data)
-    hydrophobic_cluster_data = np.asarray(hydrophobic_cluster_data)
+    h_bonds_data, hydrophobic_cluster_data, salt_bridges_data = get_data(
+        data_dir, p_names_in=p_names
+    )
     # create DataFrames
     sb_df = pd.DataFrame(salt_bridges_data, index=p_names, columns=SB_DATA_DESC).round(
         2
@@ -105,8 +85,15 @@ def predict(
 
 if __name__ == "__main__":
     pass
-    """ 
-    models = ["esm_double", "esm_single", "af_all", "md", "single_struct", "af_single", "esm_d_true"]
+
+    models = [
+        "esm_single",
+        "esm_double",
+        "esm_all",
+        "af_all",
+        "af_single",
+        "structures",
+    ]
     par = [2, 3, 4, 5, 6, 7, 8]
     for i in models:
         for p in par:
@@ -114,9 +101,9 @@ if __name__ == "__main__":
             pos_model = i + "_" + str(p)
             pos_path = os.path.join("saved_models", pos_model + ".pickle")
             if os.path.isfile(pos_path):
-                predict(pos_model, i + "_out", p_names, ["769bc", "N0"], False)
+                predict(pos_model, i + "_out", p_names, ["769bc", "N0"], True)
             print(" - " * 30)
-    """
+    
     p_names = np.append(p_names, ["769bc", "N0"])
     temp_cd = np.append(temp_cd, [57.7, 55.6])
     results = np.sort(os.listdir("results"))
@@ -139,7 +126,13 @@ if __name__ == "__main__":
     for i in range(dif.shape[0]):
         for j in range(dif.shape[1]):
             ax.text(
-                j, i, dif[i, j], ha="center", va="center", size="x-small", color="silver"
+                j,
+                i,
+                dif[i, j],
+                ha="center",
+                va="center",
+                size="x-small",
+                color="silver",
             )
     fig.tight_layout()
     fig.savefig("test.png")

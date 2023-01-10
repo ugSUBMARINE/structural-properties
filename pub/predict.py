@@ -27,6 +27,7 @@ def predict(
     p_names: np.ndarray[tuple[int], np.dtype[str]],
     add: list | None = None,
     save_results: bool = False,
+    silent: bool = False,
 ) -> None:
     """predict using a saved model
     :parameter
@@ -34,12 +35,17 @@ def predict(
           name of the saved model in saved_models/
         - data_dir:
           data of proteins the model should use for predictions
+        - p_names:
+          name of the proteins
         - add:
           names of proteins for which data is available but are not in original p_names
         - save_results:
           True to save results under model_name.json in 'results'
+        - silent:
+          True to not print any output
     :return
-        - None
+        - predictions
+          predicted values for all p_names
     """
     if add is not None:
         p_names = np.append(p_names, add)
@@ -71,9 +77,10 @@ def predict(
     predictions = model.predict(np.column_stack((np.ones(len(data)), data)))
     prediction_order = np.argsort(predictions)
 
-    for i, j in zip(p_names[prediction_order], predictions[prediction_order]):
-        print(f"{i:<6}: {j:0.1f}")
-    print(" < ".join(p_names[prediction_order]))
+    if not silent:
+        for i, j in zip(p_names[prediction_order], predictions[prediction_order]):
+            print(f"{i:<6}: {j:0.1f}")
+        print(" < ".join(p_names[prediction_order]))
 
     if save_results is not None:
         if not os.path.isdir("results"):
@@ -82,10 +89,13 @@ def predict(
         with open(os.path.join("results", model_name + ".json"), "w") as res_file:
             json.dump(res, res_file)
 
+    return predictions
+
 
 if __name__ == "__main__":
     pass
 
+    """
     models = [
         "esm_single",
         "esm_double",
@@ -93,6 +103,9 @@ if __name__ == "__main__":
         "af_all",
         "af_single",
         "structures",
+        "af_all_f",
+        "esm_single_f",
+        "af_single_f"
     ]
     par = [2, 3, 4, 5, 6, 7, 8]
     for i in models:
@@ -100,8 +113,13 @@ if __name__ == "__main__":
             print(i, p)
             pos_model = i + "_" + str(p)
             pos_path = os.path.join("saved_models", pos_model + ".pickle")
+            if i[-2:] == "_f":
+                xi = i[:-2]
+            else:
+                xi = i
+            print(pos_path)
             if os.path.isfile(pos_path):
-                predict(pos_model, i + "_out", p_names, ["769bc", "N0"], True)
+                predict(pos_model, xi + "_out", p_names, ["769bc", "N0"], True)
             print(" - " * 30)
     
     p_names = np.append(p_names, ["769bc", "N0"])
@@ -136,4 +154,43 @@ if __name__ == "__main__":
             )
     fig.tight_layout()
     fig.savefig("test.png")
-    
+    """
+    """
+    structs = "af_all"
+    pn = np.append(p_names, ["769bc", "N0"])
+    temp_cd = np.append(temp_cd, [57.7, 55.6])
+    p_inds = np.arange(len(pn))
+    for params in [1,2,3,4]:
+        error = []
+        for i in os.listdir("saved_models"):
+            if "setting" in i and structs in i:
+                base_split = i.strip().split("_")
+                if base_split[2] == str(params):
+                    fit_proteins = np.asarray(base_split[-2].split("-"), dtype=int)
+                    test_inds = p_inds[np.invert(np.isin(p_inds, fit_proteins))]
+                    pred = predict(
+                        "_".join(base_split[:-1]),
+                        f"{structs}_out",
+                        pn[test_inds],
+                        silent=True,
+                    )
+                    err = np.mean(np.abs(pred - temp_cd[test_inds]))
+                    # print(err)
+                    error.append(err)
+        print(f"Parameter: {params}\nMAE:{np.mean(error)}")
+    """
+    structs = "esm_single"
+    # tests = ["4alb", "N2", "N134"]
+    tests = ["N5", "N2", "N31"]
+    pn = np.append(p_names, ["769bc", "N0"])
+    temp_cd = np.append(temp_cd, [57.7, 55.6])
+    test_bool = np.isin(pn, tests)
+    test_temp = temp_cd[test_bool]
+    test_prot = pn[test_bool]
+    for i,j in zip(test_prot, test_temp):
+        print(f"{i:<6}: {j:0.1f}")
+    print("<>"*30)
+    par = np.arange(1,5)
+    for i in os.listdir("saved_models"):
+        if "pickle" in i and structs in i:
+            predict(i.strip().split(".")[0], f"{structs}_out", p_names)

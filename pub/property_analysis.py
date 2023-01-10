@@ -59,9 +59,19 @@ HB_DATA_DESC = np.asarray(
 )
 
 
+def spinning_wheele():
+    """uses itertools to be able to take the next sign with 'next' to create a spinning 
+    wheele
+    :parameter
+        - None:
+    :return
+        - None
+    """
+    return itertools.cycle(["-", "\\", "|", "/"])
+
+
 def analysis(
     comp_value: np.ndarray[tuple[int], np.dtype[float]],
-    combs: list[tuple[str]],
     df_list: list[pd.DataFrame],
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[float]],
@@ -77,9 +87,6 @@ def analysis(
     :parameter
         - comp_value:
           values the calculated values should be fit to
-        - combs
-          combinations of names of different columns of the DataFrames
-          in the same order as the DataFrames
         - df_list:
           list of DataFrames with the set of values the model should be fitted to
     :return
@@ -158,8 +165,9 @@ def use_model(
     predictions = model.predict(np.column_stack((np.ones(len(data)), data)))
     print(f"\nPredicted order:\n{' < '.join(p_names[np.argsort(predictions)])}")
     pr, pp = stats.pearsonr(comp_value, predictions)
+    mae = np.mean(np.abs(comp_value - predictions))
     print(f"PearsonR: {pr:>17.4f}\np: {pp:>24.4f}")
-    print(f"Mean Absolute Error: {np.mean(np.abs(comp_value - predictions)):0.4f}")
+    print(f"Mean Absolute Error: {mae:0.4f}")
 
     # scatter plot of ground truth (x) and predictions (y)
     fig, ax = plt.subplots(figsize=(32, 18))
@@ -187,6 +195,7 @@ def create_best_model(
     save_model: str | None = None,
     chose_model_ind: int | None = None,
     force_cmi: bool = False,
+    force_np: int | None = None,
 ) -> None:
     """find the model that describes the data the best without over fitting
     :parameter
@@ -210,6 +219,9 @@ def create_best_model(
           index of the 10 best models that should be used (and saved)
         - force_cmi:
           if chose_model_ind is not under the best 10 - no model gets returned
+        - force_np:
+          force number of explored parameters to be of force_np and
+          not from 1 to sum(*_param_num)
     :return
         - None
     """
@@ -222,12 +234,23 @@ def create_best_model(
     master_frame = pd.concat([hb_dataframe, hy_dataframe, sb_dataframe], axis=1)
     # make all single, double, ... NumMastervals combinations and test their performance
     master_vals = list(hb_vals) + list(hy_vals) + list(sb_vals)
+
+    # set sizes of combinations to test
+    num_mv = len(master_vals)
+    start = 1
+    if force_np is not None:
+        start = force_np
+        num_mv = force_np
+
     used_combinations = []
     performances_combinations = []
-    for i in range(1, len(master_vals) + 1):
+    spinner = spinning_wheele()
+    for i in range(start, num_mv + 1):
         comb_i = list(itertools.combinations(master_vals, i))
-        for c in comb_i:
-            res = analysis(cv, [c], np.asarray(master_frame.loc[:, c]))
+        for ci, c in enumerate(comb_i):
+            if ci % 25 == 0:
+                print("\r" + next(spinner), end="")
+            res = analysis(cv, np.asarray(master_frame.loc[:, c]))
             performances_combinations.append(list(res))
             used_combinations.append(c)
     performances_combinations = np.asarray(performances_combinations)
@@ -267,6 +290,7 @@ def create_best_model(
                 print("Failed to find model with expected number of parameters")
                 return
     print(f"Chosen combination: {used_combinations[best_comp]}")
+    # test model
     use_model(
         cv,
         p_names,

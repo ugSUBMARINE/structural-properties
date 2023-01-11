@@ -8,6 +8,7 @@ import pandas as pd
 from scipy import stats
 from matplotlib import pyplot as plt
 import statsmodels.api as sm
+import joblib
 
 from property_analysis import (
     SB_DATA_DESC,
@@ -28,6 +29,7 @@ def predict(
     add: list | None = None,
     save_results: bool = False,
     silent: bool = False,
+    loading_method: str = "sm"
 ) -> None:
     """predict using a saved model
     :parameter
@@ -43,6 +45,9 @@ def predict(
           True to save results under model_name.json in 'results'
         - silent:
           True to not print any output
+        - loading_method:
+          *  'sm' for statsmodels saved models
+          *  'sk' for models saved with joblib and sklearn
     :return
         - predictions
           predicted values for all p_names
@@ -71,10 +76,15 @@ def predict(
     param_file.close()
 
     data = np.asarray(master_frame.loc[:, model_param])
-    model = sm.load(f"saved_models/{model_name}.pickle")
+    model_file_path = f"saved_models/{model_name}.pickle"
+    if loading_method == "sm":
+        model = sm.load(model_file_path)
+        predictions = model.predict(np.column_stack((np.ones(len(data)), data)))
+    elif loading_method == "sk":
+        model = joblib.load(model_file_path)
+        predictions = model.predict(data)
 
     # using the model to predict the data of interest
-    predictions = model.predict(np.column_stack((np.ones(len(data)), data)))
     prediction_order = np.argsort(predictions)
 
     if not silent:
@@ -155,17 +165,18 @@ if __name__ == "__main__":
     fig.tight_layout()
     fig.savefig("test.png")
     """
-    """
+    
     structs = "af_all"
     pn = np.append(p_names, ["769bc", "N0"])
     temp_cd = np.append(temp_cd, [57.7, 55.6])
     p_inds = np.arange(len(pn))
-    for params in [1,2,3,4]:
+    for params in [27]: #[1,2,3,4,5,6]:
         error = []
         for i in os.listdir("saved_models"):
-            if "setting" in i and structs in i:
+            if all(["setting" in i, structs in i, "knn_" not in i]):
                 base_split = i.strip().split("_")
-                if base_split[2] == str(params):
+                # 2 for LR without prefix
+                if base_split[3] == str(params):
                     fit_proteins = np.asarray(base_split[-2].split("-"), dtype=int)
                     test_inds = p_inds[np.invert(np.isin(p_inds, fit_proteins))]
                     pred = predict(
@@ -173,13 +184,14 @@ if __name__ == "__main__":
                         f"{structs}_out",
                         pn[test_inds],
                         silent=True,
+                        loading_method="sk"
                     )
                     err = np.mean(np.abs(pred - temp_cd[test_inds]))
-                    # print(err)
                     error.append(err)
         print(f"Parameter: {params}\nMAE:{np.mean(error)}")
     """
-    structs = "esm_single"
+    # structs = "esm_single"
+    structs = "af_all"
     # tests = ["4alb", "N2", "N134"]
     tests = ["N5", "N2", "N31"]
     pn = np.append(p_names, ["769bc", "N0"])
@@ -193,4 +205,10 @@ if __name__ == "__main__":
     par = np.arange(1,5)
     for i in os.listdir("saved_models"):
         if "pickle" in i and structs in i:
-            predict(i.strip().split(".")[0], f"{structs}_out", p_names)
+            print(i.strip().split(".")[0])
+            if not "rf_" in i and "knn_" not in i:
+                # predict(i.strip().split(".")[0], f"{structs}_out", p_names)
+                pass
+            else:
+                predict(i.strip().split(".")[0], f"{structs}_out", p_names, loading_method="sk")
+    """

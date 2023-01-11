@@ -234,6 +234,7 @@ def fit_data(
     force_mi: bool = False,
     force_np: int | None = None,
     explore_all: bool = False,
+    regressor: str = "LR"
 ) -> None:
     """fit models, find the best parameter combination and plot scatter for multi data
     per protein
@@ -272,6 +273,10 @@ def fit_data(
           not from 1 to sum(*_param_num)
         - explore_all:
           True to ignore *_vals and use all *_DATA_DESC to find best parameter combi
+        - regressor:
+          *  'LR' for linear regression
+          *  'RF' for random forest
+          *  'KNN' for k-nearest neighbors
     :return
         - None
     """
@@ -339,6 +344,7 @@ def fit_data(
         chose_model_ind=model_ind,
         force_cmi=force_mi,
         force_np=force_np,
+        regressor=regressor
     )
 
 
@@ -360,12 +366,11 @@ if __name__ == "__main__":
     """
     # fit_data("af_single_out", force_np=3, explore_all=True, save_model="af_single_f_3")
 
-    """
     structs = "af_all"
     pn = np.append(p_names, ["769bc", "N0"])
     temp_cd = np.append(temp_cd, [57.7, 55.6])
     p_inds = np.arange(len(pn))
-    for params in [1, 2, 3, 4]:
+    for params in [27]:#  [2, 3]:
         for i in range(5):
             fit_p = np.random.choice(p_inds, 6, replace=False)
             d_str = "-".join(fit_p.astype(str).tolist())
@@ -375,26 +380,26 @@ if __name__ == "__main__":
                 explore_all=True,
                 p_names_in=pn[fit_p],
                 target=temp_cd[fit_p],
-                save_model=f"{structs}_{params}_" + d_str,
+                save_model=f"knn_{structs}_{params}_" + d_str,
+                regressor="KNN"
             )
+    
     """
     structs = "esm_single"
     pn = np.append(p_names, ["769bc", "N0"])
     temp_cd = np.append(temp_cd, [57.7, 55.6])
-    print(pn[np.argsort(temp_cd)])
-    print(temp_cd[np.argsort(temp_cd)])
-    """
     tests = ["N5", "N2", "N31"]
     test_bool = np.invert(np.isin(pn, tests))
     fit_prot = pn[test_bool]
     fit_temps = temp_cd[test_bool]
-    for i in range(1, 5):
+    for i in [27]: #range(1, 4):
         fit_data(
             f"{structs}_out",
             force_np=i,
             explore_all=True,
-            save_model=f"{structs}_{i}",
+            save_model=f"knn_{structs}_{i}",
             p_names_in=fit_prot,
             target=fit_temps,
+            regressor="KNN"
         )
-        """
+    """

@@ -7,6 +7,9 @@ import pandas as pd
 from scipy import stats
 from matplotlib import pyplot as plt
 from sklearn import linear_model, model_selection
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.neighbors import KNeighborsRegressor
+import joblib
 import statsmodels.api as sm
 
 from run_rmsf_analysis import p_names, temp_cd, activity
@@ -60,7 +63,7 @@ HB_DATA_DESC = np.asarray(
 
 
 def spinning_wheele():
-    """uses itertools to be able to take the next sign with 'next' to create a spinning 
+    """uses itertools to be able to take the next sign with 'next' to create a spinning
     wheele
     :parameter
         - None:
@@ -70,7 +73,7 @@ def spinning_wheele():
     return itertools.cycle(["-", "\\", "|", "/"])
 
 
-def analysis(
+def lr_analysis(
     comp_value: np.ndarray[tuple[int], np.dtype[float]],
     df_list: list[pd.DataFrame],
 ) -> tuple[
@@ -103,7 +106,7 @@ def analysis(
         - mses:
           MSE of each model
         - f_values:
-          F-statistic of the fully specified model for each models
+          F-statistic of the fully specified model for each model
         - models:
           statsmodels regression model instance of each model
     """
@@ -134,51 +137,68 @@ def analysis(
     return combs_scores, r2, r2a, aics, bics, mses, f_values, model
 
 
-def use_model(
-    comp_value: np.ndarray[tuple[int], np.dtype[int | float]],
-    p_names: list[str],
-    model: sm.OLS,
-    data: np.ndarray[tuple[int, int], np.dtype[int | float]],
-    save_plot: bool = False,
-    show_plot: bool = False,
-) -> None:
-    """uses the fitted models to calculate the comp_value based on their inputs that
-    were used to fit them and plot the correlation plot
+def rf_analysis(
+    comp_value: np.ndarray[tuple[int], np.dtype[float]], df_list: list[pd.DataFrame]
+) -> tuple[float, float, RandomForestRegressor]:
+    """fit RandomForestRegressor to data
     :parameter
         - comp_value:
           values the calculated values should be fit to
-        - p_names:
-          name of the proteins
-        - model:
-          statsmodels linear_model instance
-        - data:
-          data used to fit the model
-        - save_plot:
-          True to save the plot as performances_plot.png
-        - show_plot:
-          True to show the scatter plot
+        - df_list:
+          list of DataFrames with the set of values the model should be fitted to
     :return
-        - func1return
-          description
+        - 1 - oob_score_
+          out of bag r2 of all trees
+        - mae
+          mean absolute prediction error
+        - regr
+          RandomForestRegressor
     """
-    # calculate Pearson R for the predictions
-    predictions = model.predict(np.column_stack((np.ones(len(data)), data)))
-    print(f"\nPredicted order:\n{' < '.join(p_names[np.argsort(predictions)])}")
-    pr, pp = stats.pearsonr(comp_value, predictions)
-    mae = np.mean(np.abs(comp_value - predictions))
-    print(f"PearsonR: {pr:>17.4f}\np: {pp:>24.4f}")
-    print(f"Mean Absolute Error: {mae:0.4f}")
+    regr = RandomForestRegressor(
+        max_depth=3, random_state=0, n_estimators=10, oob_score=True, n_jobs=10
+    )
+    regr.fit(df_list, comp_value)
+    mae = np.mean(np.abs(regr.oob_prediction_ - comp_value))
+    return 1 - regr.oob_score_, mae, regr
 
-    # scatter plot of ground truth (x) and predictions (y)
-    fig, ax = plt.subplots(figsize=(32, 18))
-    for i in range(len(predictions)):
-        ax.scatter(comp_value[i], predictions[i], label=p_names[i])
-    fig.legend(loc="lower center", ncol=10)
-    ax.set(ylabel="predicted values", xlabel="ground truth")
-    if save_plot:
-        fig.savefig("performances_plot.png")
-    if show_plot:
-        plt.show()
+
+def knn_analysis(
+    comp_value: np.ndarray[tuple[int], np.dtype[float]],
+    df_list: list[pd.DataFrame],
+    nneighbors: int = 2,
+) -> tuple[float, float, KNeighborsRegressor]:
+    """fit KNeighborsRegressor to data with LeaveOneOut
+    :parameter
+        - comp_value:
+          values the calculated values should be fit to
+        - df_list:
+          list of DataFrames with the set of values the model should be fitted to
+    :return
+        - combs_scores:
+          MSE of each model based on LeaveOneOut
+        - mae
+          mean absolute prediction error
+        - knn
+          KNeighborsRegressor
+    """
+    knn = KNeighborsRegressor(n_neighbors=nneighbors, weights="distance", n_jobs=10)
+    knn.fit(df_list, comp_value)
+
+    # LeaveOneOut model
+    cv = model_selection.LeaveOneOut()
+    LOO_model = KNeighborsRegressor(
+        n_neighbors=nneighbors, weights="distance", n_jobs=10
+    )
+    scores = model_selection.cross_val_score(
+        LOO_model,
+        df_list,
+        comp_value,
+        scoring="neg_mean_squared_error",
+        cv=cv,
+    )
+    combs_scores = np.asarray(np.sqrt(np.mean(np.abs(scores))))
+    mae = np.mean(np.abs(knn.predict(df_list) - comp_value))
+    return combs_scores, mae, knn
 
 
 def create_best_model(
@@ -196,6 +216,7 @@ def create_best_model(
     chose_model_ind: int | None = None,
     force_cmi: bool = False,
     force_np: int | None = None,
+    regressor: str = "LR",
 ) -> None:
     """find the model that describes the data the best without over fitting
     :parameter
@@ -222,6 +243,10 @@ def create_best_model(
         - force_np:
           force number of explored parameters to be of force_np and
           not from 1 to sum(*_param_num)
+        - regressor:
+          *  'LR' for linear regression
+          *  'RF' for random forest
+          *  'KNN' for k-nearest neighbors
     :return
         - None
     """
@@ -242,6 +267,16 @@ def create_best_model(
         start = force_np
         num_mv = force_np
 
+    if regressor == "LR":
+        analysis = lr_analysis
+    elif regressor == "RF":
+        analysis = rf_analysis
+    elif regressor == "KNN":
+        analysis = knn_analysis
+    else:
+        raise KeyError(f"Invalid regressor encountered: '{regressor}'")
+
+    # fit regressor to all possible attribute combinations and store the(m) + results
     used_combinations = []
     performances_combinations = []
     spinner = spinning_wheele()
@@ -253,6 +288,7 @@ def create_best_model(
             res = analysis(cv, np.asarray(master_frame.loc[:, c]))
             performances_combinations.append(list(res))
             used_combinations.append(c)
+    print("\r", end="")
     performances_combinations = np.asarray(performances_combinations)
     used_combinations = np.asarray(used_combinations, dtype=object)
 
@@ -270,6 +306,7 @@ def create_best_model(
     for i in performances_combinations[:, 1][performance_order][:10]:
         print(f"{i:0.4f}")
 
+    # how to determine the best performance
     best_comp = performance_order[0]
     if chose_model_ind is not None:
         if type(chose_model_ind) == int:
@@ -290,24 +327,57 @@ def create_best_model(
                 print("Failed to find model with expected number of parameters")
                 return
     print(f"Chosen combination: {used_combinations[best_comp]}")
-    # test model
-    use_model(
-        cv,
-        p_names,
-        performances_combinations[:, -1][best_comp],
-        np.asarray(master_frame.loc[:, used_combinations[best_comp]]),
-        save_plot,
-        show_plot,
-    )
+
+    # calculate Pearson R for the predictions
+    model = performances_combinations[:, -1][best_comp]
+    if regressor == "LR":
+        predictions = model.predict(
+            np.column_stack(
+                (
+                    np.ones(
+                        len(
+                            np.asarray(
+                                master_frame.loc[:, used_combinations[best_comp]]
+                            )
+                        )
+                    ),
+                    np.asarray(master_frame.loc[:, used_combinations[best_comp]]),
+                )
+            )
+        )
+    else:
+        predictions = model.predict(
+            np.asarray(master_frame.loc[:, used_combinations[best_comp]])
+        )
+    print(f"\nPredicted order:\n{' < '.join(p_names[np.argsort(predictions)])}")
+    pr, pp = stats.pearsonr(cv, predictions)
+    mae = np.mean(np.abs(cv - predictions))
+    print(f"PearsonR: {pr:>17.4f}\np: {pp:>24.4f}")
+    print(f"Mean Absolute Error: {mae:0.4f}")
+
+    # scatter plot of ground truth (x) and predictions (y)
+    fig, ax = plt.subplots(figsize=(32, 18))
+    for i in range(len(predictions)):
+        ax.scatter(cv[i], predictions[i], label=p_names[i])
+    fig.legend(loc="lower center", ncol=10)
+    ax.set(ylabel="predicted values", xlabel="ground truth")
+    if save_plot:
+        fig.savefig("performances_plot.png")
+    if show_plot:
+        plt.show()
+
+    # save the model
     if save_model is not None:
         if not os.path.isdir("saved_models"):
             os.mkdir("saved_models")
         sett = open(os.path.join("saved_models", save_model + "_setting.txt"), "w+")
         sett.write(",".join(list(used_combinations[best_comp])))
         sett.close()
-        performances_combinations[:, -1][best_comp].save(
-            os.path.join("saved_models", save_model + ".pickle")
-        )
+        model_path = os.path.join("saved_models", save_model + ".pickle")
+        if regressor == "LR":
+            performances_combinations[:, -1][best_comp].save(model_path)
+        else:
+            joblib.dump(performances_combinations[:, -1][best_comp], model_path)
 
 
 if __name__ == "__main__":

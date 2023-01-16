@@ -8,9 +8,10 @@ import pandas as pd
 from scipy import stats
 from matplotlib import pyplot as plt
 from sklearn.metrics import r2_score
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.linear_model import Ridge, LinearRegression
+from sklearn.preprocessing import MinMaxScaler
 import joblib
 
 from run_rmsf_analysis import p_names, temp_cd, activity
@@ -286,7 +287,6 @@ def fit_data(
     ow_hy_vals: np.ndarray[tuple[int], np.dtype[str]] | None = None,
     ow_sb_vals: np.ndarray[tuple[int], np.dtype[str]] | None = None,
     p_names_in: np.ndarray[tuple[int], np.dtype[str]] | None = None,
-    force_mi: bool = False,
     chose_model_ind: int | None = None,
     force_cmi: bool = False,
     force_np: int | None = None,
@@ -322,8 +322,6 @@ def fit_data(
           if chosen Salt Bridges attributes in *_vals should be overwritten
         - p_names_in:
           Name of the proteins and their respective files like 769bc for 769bc.pdb
-        - force_mi:
-          if model_ind is not under the best 10 - no model gets saved
         - chose_model_ind:
           index of the 10 best models that should be used (and saved)
         - force_cmi:
@@ -392,8 +390,47 @@ def fit_data(
 
     # make one big DataFrame
     master_frame = pd.concat([hb_df, hy_df, sb_df], axis=1)
+    # scale values so each feature is in range (0, 1)
+    # """
+    scaler = MinMaxScaler()
+    scaler.fit(master_frame)
+    inter_master_frame = scaler.transform(master_frame)
+    master_frame = pd.DataFrame(
+        inter_master_frame, index=master_frame.index, columns=master_frame.columns
+    )
+    # """
     # make all single, double, ... NumMastervals combinations and test their performance
     master_vals = list(hb_vals) + list(hy_vals) + list(sb_vals)
+
+    # whether feature importance is possible
+    get_fi = False
+    # set regressor
+    if regressor == "LR":
+        if not silent:
+            print("Chosen Regressor: LinearRegression")
+        LOO_model = LinearRegression()
+    elif regressor == "RI":
+        if not silent:
+            print("Chosen Regressor: Ridge")
+        LOO_model = Ridge()
+    elif regressor == "RF":
+        if not silent:
+            print("Chosen Regressor: RandomForestRegressor")
+        get_fi = True
+        LOO_model = RandomForestRegressor(
+            max_depth=3, random_state=0, n_estimators=10, oob_score=True, n_jobs=10
+        )
+    elif regressor == "KNN":
+        if not silent:
+            print("Chosen Regressor: KNeighborsRegressor")
+        LOO_model = KNeighborsRegressor(n_neighbors=2, weights="distance", n_jobs=10)
+    elif regressor == "GB":
+        if not silent:
+            print("Chosen Regressor: GradientBoostingRegressor")
+        get_fi = True
+        LOO_model = GradientBoostingRegressor(n_estimators=10, random_state=0)
+    else:
+        raise KeyError(f"Invalid regressor encountered: '{regressor}'")
 
     # set sizes of combinations to test
     num_mv = len(master_vals)
@@ -402,22 +439,11 @@ def fit_data(
         start = force_np
         num_mv = force_np
 
-    # whether feature importance is possible
-    get_fi = False
-    # set regressor
-    if regressor == "LR":
-        LOO_model = LinearRegression()
-    elif regressor == "RI":
-        LOO_model = Ridge()
-    elif regressor == "RF":
-        get_fi = True
-        LOO_model = RandomForestRegressor(
-            max_depth=3, random_state=0, n_estimators=10, oob_score=True, n_jobs=-1
-        )
-    elif regressor == "KNN":
-        LOO_model = KNeighborsRegressor(n_neighbors=2, weights="distance", n_jobs=-1)
+    # set size of validation set for cross validation
+    if c_val is None:
+        split = master_frame.shape[0]
     else:
-        raise KeyError(f"Invalid regressor encountered: '{regressor}'")
+        split = c_val
 
     # fit regressor to all possible attribute combinations and store the(m) + results
     used_combinations = []
@@ -426,10 +452,6 @@ def fit_data(
     # feature importances
     fis = []
     spinner = spinning_wheele()
-    if c_val is None:
-        split = master_frame.shape[0]
-    else:
-        split = c_val
     for i in range(start, num_mv + 1):
         comb_i = list(itertools.combinations(master_vals, i))
         for ci, c in enumerate(comb_i):
@@ -457,7 +479,7 @@ def fit_data(
         print("\nBest 10 combinations (MSEs of LOO model):")
         for i in mae[performance_order][:10]:
             print(f"{i:0.4f}")
-        print("\nBest 10 combinations (r² over all LOO models):")
+        print("\nBest 10 combinations (r² over all LOO predictions):")
         for i in r2[performance_order][:10]:
             print(f"{i:0.4f}")
 
@@ -512,27 +534,27 @@ if __name__ == "__main__":
     start = timer()
     mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
         f"{structs}_out",
-        force_np=27,
+        force_np=3,
         explore_all=True,
         p_names_in=pn,
         target=temp_cd,
-        regressor="RF",
+        regressor="GB",
         # silent=True,
         ow_hb_vals=new_hb_vals,
         ow_hy_vals=new_hy_vals,
         ow_sb_vals=new_sb_vals,
-        # paral=-1,
+        paral=-1,
         # save_model="test",
         # c_val=None,
     )
     end_ = timer()
     print(end_ - start)
+    """
+    # protein names
+    print([e.split(".")[0] for e in os.listdir("af_all") if "pdb" in e])
+    """
 
     """
-    last_hb = None
-    last_hy = None
-    last_sb = None
-
     num_par = len(new_hb_vals) + len(new_hy_vals) + len(new_sb_vals)
     regressors = ["KNN", "RI", "LR", "RF"]
     col = ["forestgreen", "royalblue", "orange", "cyan"]
@@ -561,7 +583,7 @@ if __name__ == "__main__":
                 paral=-1
             )
 
-            # print(f"** {r} {num_par}**\nMAE: {mae_f[0]:.4f}\nR2: {r2_f[0]:.4f}\n")
+            print(f"** {r} {num_par}**\nMAE: {mae_f[0]:.4f}\nR2: {r2_f[0]:.4f}\n")
             if pos == 0:
                 lab = r
             else:
@@ -577,6 +599,7 @@ if __name__ == "__main__":
                 new_hy_vals = importance_order[np.isin(importance_order, HY_DATA_DESC)]
                 new_sb_vals = importance_order[np.isin(importance_order, SB_DATA_DESC)]
                 num_par = len(new_hb_vals) + len(new_hy_vals) + len(new_sb_vals)
+                # print(importance_order)
         pos += 1
     end_ = timer()
     print(end_-start)

@@ -271,7 +271,7 @@ def cross_val(
     if fi:
         feature_imp = np.mean(feature_imp, axis=0)
     else:
-        feature_imp = None
+        feature_imp = [None]
     return mae, r2, feature_imp
 
 
@@ -521,24 +521,147 @@ def fit_data(
     return mae, r2, fis, used_combinations, fit_model
 
 
+def plot_search(
+    best_errors: np.ndarray[tuple[int], np.dtype[int | float]],
+    performance_order: np.ndarray[tuple[int], np.ndarray[int | float]],
+) -> None:
+    fig, ax = plt.subplots(figsize=(32, 18))
+    x_ = np.arange(len(best_errors))
+    ax.scatter(
+        x_[performance_order],
+        best_errors[performance_order],
+        color="firebrick",
+        s=150,
+        marker="^",
+    )
+    ax.plot(best_errors, marker="o", color="forestgreen")
+    ax.set_xticks(x_, np.arange(1, len(best_errors) + 1))
+    plt.show()
+
+
+def forward_search(
+    regressor: str,
+    target: np.ndarray[tuple[int], np.dtype[int | float]],
+    p_names_in: np.ndarray[tuple[int], np.dtype[int | float]],
+    structs_in: str,
+    hb_vals: np.ndarray[tuple[int], np.dtype[str]],
+    hy_vals: np.ndarray[tuple[int], np.dtype[str]],
+    sb_vals: np.ndarray[tuple[int], np.dtype[str]],
+    c_val: int | None = None,
+    silent: bool = False,
+    paral: int | None = None,
+    plot_search_res: bool = True,
+    ignore_err: bool = False,
+):
+    """tries to find the best attribute combination by adding the attribute
+    that yields in the lowest error or if feature importances is given also has the
+    highest feature importance
+    :parameter
+        - regressor:
+          *  'LR' for linear regression
+          *  'RF' for random forest
+          *  'KNN' for k-nearest neighbors
+        - target:
+          data to fit the model to
+        - p_names_in:
+          Name of the proteins and their respective files like 769bc for 769bc.pdb
+        - hb_vals:
+          H-Bonds attributes to be tested
+        - hy_vals:
+          Hydrophobic Cluster attributes to be tested
+        - sb_vals:
+          Salt Bridges attributes to be tested
+        - c_val:
+          integer do specify the number of splits or
+          None for LeaveOneOut cross validation
+        - silent:
+          True to hide output in terminal
+        - paral:
+          None to not parallelize the cross validation, integer to specify the number
+          of cores or '-1' to use all cores
+        - plot_search_res:
+          whether the course of the error over the search should be plotted
+        - ignore_err:
+          ignore error impovement in the search
+    :return
+        - None
+    """
+    new_hb_vals = hb_vals
+    new_hy_vals = hy_vals
+    new_sb_vals = sb_vals
+    conc_vals = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
+    # total number of attributes
+    total_num_vals = conc_vals.shape[0]
+    # the so far best attribute addings
+    best_vals = []
+    # all errors per added best attribute
+    best_errors = []
+    for i in range(total_num_vals):
+        best_so_far = None
+        best_err = np.inf
+        bsf_val = -np.inf
+        # search over each attribute that's not added so far
+        for c in conc_vals[np.invert(np.isin(conc_vals, best_vals))]:
+            added_val = np.append(best_vals, c)
+            new_hb_vals = added_val[np.isin(added_val, hb_vals)]
+            new_hy_vals = added_val[np.isin(added_val, hy_vals)]
+            new_sb_vals = added_val[np.isin(added_val, sb_vals)]
+            mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
+                f"{structs_in}_out",
+                force_np=added_val.shape[0],
+                explore_all=True,
+                p_names_in=p_names_in,
+                target=target,
+                regressor=regressor,
+                silent=silent,
+                ow_hb_vals=new_hb_vals,
+                ow_hy_vals=new_hy_vals,
+                ow_sb_vals=new_sb_vals,
+                paral=paral,
+                c_val=c_val,
+            )
+            # feature importance of c
+            i_fis = fis_f[0][-1]
+            # check only error as metric when no feature importance is given
+            if i_fis is None or ignore_err:
+                feature_importance_test = True
+            else:
+                feature_importance_test = i_fis > bsf_val
+            if feature_importance_test and mae_f < best_err:
+                bsf_val = i_fis
+                best_err = mae_f
+                best_so_far = c
+        best_vals.append(best_so_far)
+        best_errors.append(best_err)
+
+    best_vals = np.asarray(best_vals)
+    best_errors = np.asarray(best_errors)
+
+    # determine the best attribute combination and plot the cource of the search
+    performance_order = np.argmin(best_errors)
+    best_comb_vals = best_vals[: performance_order + 1]
+    print(
+        f"Best combination of attributes: {' - '.join(best_comb_vals.tolist())}\n"
+        f"MAE: {best_errors[performance_order][0]:.4f}"
+    )
+    if plot_search_res:
+        plot_search(best_errors, performance_order)
+
+
 if __name__ == "__main__":
     pass
     structs = "af_all"
     pn = np.append(p_names, ["769bc", "N0"])
     temp_cd = np.append(temp_cd, [57.7, 55.6])
 
-    new_hb_vals = HB_DATA_DESC
-    new_hy_vals = HY_DATA_DESC
-    new_sb_vals = SB_DATA_DESC
-
     start = timer()
     mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
         f"{structs}_out",
-        force_np=3,
+        force_np=2,
         explore_all=True,
         p_names_in=pn,
         target=temp_cd,
-        regressor="GB",
+        regressor="RI",
         # silent=True,
         ow_hb_vals=new_hb_vals,
         ow_hy_vals=new_hy_vals,
@@ -549,12 +672,26 @@ if __name__ == "__main__":
     )
     end_ = timer()
     print(end_ - start)
-    """
-    # protein names
-    print([e.split(".")[0] for e in os.listdir("af_all") if "pdb" in e])
-    """
 
     """
+    forward_search(
+        "RF",
+        temp_cd,
+        pn,
+        structs,
+        HB_DATA_DESC,
+        HY_DATA_DESC,
+        SB_DATA_DESC,
+        paral=-1,
+        c_val=None,
+        silent=True,
+        ignore_err=True
+    )
+    """
+    """
+    new_hb_vals = HB_DATA_DESC
+    new_hy_vals = HY_DATA_DESC
+    new_sb_vals = SB_DATA_DESC
     num_par = len(new_hb_vals) + len(new_hy_vals) + len(new_sb_vals)
     regressors = ["KNN", "RI", "LR", "RF"]
     col = ["forestgreen", "royalblue", "orange", "cyan"]

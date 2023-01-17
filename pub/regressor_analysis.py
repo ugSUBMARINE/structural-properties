@@ -335,6 +335,8 @@ def fit_data(
           *  'LR' for linear regression
           *  'RF' for random forest
           *  'KNN' for k-nearest neighbors
+          *  'RI' for Ridge
+          *  'GB' for GradientBoostingRegressor
         - c_val:
           integer do specify the number of splits or
           None for LeaveOneOut cross validation
@@ -523,10 +525,12 @@ def fit_data(
 
 def plot_search(
     best_errors: np.ndarray[tuple[int], np.dtype[int | float]],
-    performance_order: np.ndarray[tuple[int], np.ndarray[int | float]],
+    performance_order: np.ndarray[tuple[int], np.dtype[int | float]],
+    order: int | None = None,
 ) -> None:
     fig, ax = plt.subplots(figsize=(32, 18))
     x_ = np.arange(len(best_errors))
+    # mark best
     ax.scatter(
         x_[performance_order],
         best_errors[performance_order],
@@ -534,118 +538,260 @@ def plot_search(
         s=150,
         marker="^",
     )
+    # error course
     ax.plot(best_errors, marker="o", color="forestgreen")
+    # reorder labels
+    if order == -1:
+        x_ = x_[::-1]
     ax.set_xticks(x_, np.arange(1, len(best_errors) + 1))
+    ax.set_xlabel("number of attributes")
+    ax.set_ylabel("cross validation error")
     plt.show()
 
 
-def forward_search(
-    regressor: str,
-    target: np.ndarray[tuple[int], np.dtype[int | float]],
-    p_names_in: np.ndarray[tuple[int], np.dtype[int | float]],
-    structs_in: str,
-    hb_vals: np.ndarray[tuple[int], np.dtype[str]],
-    hy_vals: np.ndarray[tuple[int], np.dtype[str]],
-    sb_vals: np.ndarray[tuple[int], np.dtype[str]],
-    c_val: int | None = None,
-    silent: bool = False,
-    paral: int | None = None,
-    plot_search_res: bool = True,
-    ignore_err: bool = False,
-):
-    """tries to find the best attribute combination by adding the attribute
-    that yields in the lowest error or if feature importances is given also has the
-    highest feature importance
-    :parameter
-        - regressor:
-          *  'LR' for linear regression
-          *  'RF' for random forest
-          *  'KNN' for k-nearest neighbors
-        - target:
-          data to fit the model to
-        - p_names_in:
-          Name of the proteins and their respective files like 769bc for 769bc.pdb
-        - hb_vals:
-          H-Bonds attributes to be tested
-        - hy_vals:
-          Hydrophobic Cluster attributes to be tested
-        - sb_vals:
-          Salt Bridges attributes to be tested
-        - c_val:
-          integer do specify the number of splits or
-          None for LeaveOneOut cross validation
-        - silent:
-          True to hide output in terminal
-        - paral:
-          None to not parallelize the cross validation, integer to specify the number
-          of cores or '-1' to use all cores
-        - plot_search_res:
-          whether the course of the error over the search should be plotted
-        - ignore_err:
-          ignore error impovement in the search
-    :return
-        - None
-    """
-    new_hb_vals = hb_vals
-    new_hy_vals = hy_vals
-    new_sb_vals = sb_vals
-    conc_vals = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
-    # total number of attributes
-    total_num_vals = conc_vals.shape[0]
-    # the so far best attribute addings
-    best_vals = []
-    # all errors per added best attribute
-    best_errors = []
-    for i in range(total_num_vals):
-        best_so_far = None
-        best_err = np.inf
-        bsf_val = -np.inf
-        # search over each attribute that's not added so far
-        for c in conc_vals[np.invert(np.isin(conc_vals, best_vals))]:
-            added_val = np.append(best_vals, c)
-            new_hb_vals = added_val[np.isin(added_val, hb_vals)]
-            new_hy_vals = added_val[np.isin(added_val, hy_vals)]
-            new_sb_vals = added_val[np.isin(added_val, sb_vals)]
+class AttributeSearch:
+    def __init__(
+        self,
+        regressor: str,
+        target: np.ndarray[tuple[int], np.dtype[int | float]],
+        p_names_in: np.ndarray[tuple[int], np.dtype[int | float]],
+        structs_in: str,
+        hb_vals: np.ndarray[tuple[int], np.dtype[str]],
+        hy_vals: np.ndarray[tuple[int], np.dtype[str]],
+        sb_vals: np.ndarray[tuple[int], np.dtype[str]],
+        c_val: int | None = None,
+        silent: bool = False,
+        paral: int | None = None,
+        plot_search_res: bool = True,
+    ):
+        """Different search functions to find the best attribute set
+        :parameter
+            - regressor:
+              *  'LR' for linear regression
+              *  'RF' for random forest
+              *  'KNN' for k-nearest neighbors
+              *  'RI' for Ridge
+              *  'GB' for GradientBoostingRegressor
+            - target:
+              data to fit the model to
+            - p_names_in:
+              Name of the proteins and their respective files like 769bc for 769bc.pdb
+            - hb_vals:
+              H-Bonds attributes to be tested
+            - hy_vals:
+              Hydrophobic Cluster attributes to be tested
+            - sb_vals:
+              Salt Bridges attributes to be tested
+            - c_val:
+              integer do specify the number of splits or
+              None for LeaveOneOut cross validation
+            - silent:
+              True to hide output in terminal
+            - paral:
+              None to not parallelize the cross validation,
+              integer to specify the number of cores or '-1' to use all cores
+            - plot_search_res:
+              whether the course of the error over the search should be plotted
+        :return
+            - None
+        """
+        self.regressor = regressor
+        self.target = target
+        self.p_names_in = p_names_in
+        self.structs_in = structs_in
+        self.hb_vals = hb_vals
+        self.hy_vals = hy_vals
+        self.sb_vals = sb_vals
+        self.c_val = c_val
+        self.silent = silent
+        self.paral = paral
+        self.plot_search_res = plot_search_res
+
+    def forward_search(self):
+        """
+        tries to find the best attribute combination by greedy adding the attribute
+        that yields in the lowest error
+        :parameters
+            - None
+        :return
+            - None
+        """
+        new_hb_vals = self.hb_vals
+        new_hy_vals = self.hy_vals
+        new_sb_vals = self.sb_vals
+        conc_vals = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
+        # total number of attributes
+        total_num_vals = conc_vals.shape[0]
+        # the so far best attribute addings
+        best_vals = []
+        # all errors per added best attribute
+        best_errors = []
+        for i in range(total_num_vals):
+            best_c = None
+            best_err = np.inf
+            # search over each attribute that's not added so far
+            for c in conc_vals[np.invert(np.isin(conc_vals, best_vals))]:
+                added_val = np.append(best_vals, c)
+                new_hb_vals = added_val[np.isin(added_val, self.hb_vals)]
+                new_hy_vals = added_val[np.isin(added_val, self.hy_vals)]
+                new_sb_vals = added_val[np.isin(added_val, self.sb_vals)]
+                mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
+                    f"{self.structs_in}_out",
+                    force_np=added_val.shape[0],
+                    explore_all=True,
+                    p_names_in=self.p_names_in,
+                    target=self.target,
+                    regressor=self.regressor,
+                    silent=self.silent,
+                    ow_hb_vals=new_hb_vals,
+                    ow_hy_vals=new_hy_vals,
+                    ow_sb_vals=new_sb_vals,
+                    paral=self.paral,
+                    c_val=self.c_val,
+                )
+                # update best added attribute if error improves
+                if best_err > mae_f[0]:
+                    best_err = mae_f[0]
+                    best_c = c
+            best_vals.append(best_c)
+            best_errors.append(best_err)
+
+        best_vals = np.asarray(best_vals)
+        best_errors = np.asarray(best_errors)
+
+        # determine the best attribute combination and plot the cource of the search
+        performance_order = np.argmin(best_errors)
+        best_comb_vals = best_vals[: performance_order + 1]
+        print(
+            f"Best combination of attributes: {' - '.join(best_comb_vals.tolist())}\n"
+            f"MAE: {best_errors[performance_order]:.4f}"
+        )
+        if self.plot_search_res:
+            plot_search(best_errors, performance_order)
+
+    def backward_search(self):
+        """
+        tries to find the best attribute combination by greedy removing the attribute
+        whichs removal yields the lowest errors
+        :parameters
+            - None
+        :return
+            - None
+        """
+        new_hb_vals = self.hb_vals
+        new_hy_vals = self.hy_vals
+        new_sb_vals = self.sb_vals
+        conc_vals = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
+        # total number of attributes
+        total_num_vals = conc_vals.shape[0]
+        # the so far best attribute addings
+        best_vals = []
+        # all errors per added best attribute
+        best_errors = []
+        for i in range(total_num_vals-1):
+            best_c = None
+            best_err = np.inf
+            # search over each attribute that's not added so far
+            for c in conc_vals:
+                i_cv = conc_vals[conc_vals != c]
+                new_hb_vals = i_cv[np.isin(i_cv, self.hb_vals)]
+                new_hy_vals = i_cv[np.isin(i_cv, self.hy_vals)]
+                new_sb_vals = i_cv[np.isin(i_cv, self.sb_vals)]
+                mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
+                    f"{self.structs_in}_out",
+                    force_np=i_cv.shape[0],
+                    explore_all=True,
+                    p_names_in=self.p_names_in,
+                    target=self.target,
+                    regressor=self.regressor,
+                    silent=self.silent,
+                    ow_hb_vals=new_hb_vals,
+                    ow_hy_vals=new_hy_vals,
+                    ow_sb_vals=new_sb_vals,
+                    paral=self.paral,
+                    c_val=self.c_val,
+                )
+                # update best added attribute if error improves
+                if best_err > mae_f[0]:
+                    best_err = mae_f[0]
+                    best_c = i_cv
+            conc_vals = best_c
+            best_vals.append(best_c)
+            best_errors.append(best_err)
+
+
+        # determine the best attribute combination and plot the cource of the search
+        performance_order = np.argmin(best_errors)
+        best_comb_vals = best_vals[performance_order]
+        print(
+            f"Best combination of attributes: {' - '.join(best_comb_vals)}\n"
+            f"MAE: {best_errors[performance_order]:.4f}"
+        )
+        if self.plot_search_res:
+            plot_search(best_errors, performance_order, -1)
+
+    def model_based_search(self):
+        """
+        uses the coef_ or feature_importances_ of a model to iteratively remove the
+        attribute with the lowest importances
+        :parameters
+            - None
+        :return
+            - None
+        """
+        new_hb_vals = self.hb_vals
+        new_hy_vals = self.hy_vals
+        new_sb_vals = self.sb_vals
+        conc_vals = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
+        # total number of attributes
+        total_num_vals = conc_vals.shape[0]
+        # all attribute removals
+        best_vals = []
+        # all errors per added best attribute
+        best_errors = []
+        # attribute importances
+        att_imp = []
+        for i in range(total_num_vals):
             mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
-                f"{structs_in}_out",
-                force_np=added_val.shape[0],
+                f"{self.structs_in}_out",
+                force_np=conc_vals.shape[0],
                 explore_all=True,
-                p_names_in=p_names_in,
-                target=target,
-                regressor=regressor,
-                silent=silent,
+                p_names_in=self.p_names_in,
+                target=self.target,
+                regressor=self.regressor,
+                silent=self.silent,
                 ow_hb_vals=new_hb_vals,
                 ow_hy_vals=new_hy_vals,
                 ow_sb_vals=new_sb_vals,
-                paral=paral,
-                c_val=c_val,
+                paral=self.paral,
+                c_val=self.c_val,
             )
-            # feature importance of c
-            i_fis = fis_f[0][-1]
-            # check only error as metric when no feature importance is given
-            if i_fis is None or ignore_err:
-                feature_importance_test = True
-            else:
-                feature_importance_test = i_fis > bsf_val
-            if feature_importance_test and mae_f < best_err:
-                bsf_val = i_fis
-                best_err = mae_f
-                best_so_far = c
-        best_vals.append(best_so_far)
-        best_errors.append(best_err)
+            best_errors.append(mae_f)
+            att_imp.append(fis_f[0])
+            best_vals.append(conc_vals)
+            # sort attributes for their best feature importances
+            conc_vals = conc_vals[np.argsort(fis_f[0])[::-1]][:-1]
+            new_hb_vals = conc_vals[np.isin(conc_vals, self.hb_vals)]
+            new_hy_vals = conc_vals[np.isin(conc_vals, self.hy_vals)]
+            new_sb_vals = conc_vals[np.isin(conc_vals, self.sb_vals)]
 
-    best_vals = np.asarray(best_vals)
-    best_errors = np.asarray(best_errors)
-
-    # determine the best attribute combination and plot the cource of the search
-    performance_order = np.argmin(best_errors)
-    best_comb_vals = best_vals[: performance_order + 1]
-    print(
-        f"Best combination of attributes: {' - '.join(best_comb_vals.tolist())}\n"
-        f"MAE: {best_errors[performance_order][0]:.4f}"
-    )
-    if plot_search_res:
-        plot_search(best_errors, performance_order)
+        # determine the best attribute combination and plot the cource of the search
+        performance_order = np.argmin(best_errors)
+        best_comb_vals = best_vals[performance_order]
+        print(
+            f"Best combination of attributes: {' - '.join(best_comb_vals.tolist())}\n"
+            f"MAE: {best_errors[performance_order][0]:.4f}"
+        )
+        if self.plot_search_res:
+            # search error plot
+            plot_search(best_errors, performance_order, -1)
+            # feature importances plot
+            fig, ax = plt.subplots(layout="tight")
+            x_ = np.arange(len(att_imp[performance_order]))
+            att_order = np.argsort(att_imp[performance_order])
+            ax.bar(x_, att_imp[performance_order][att_order], color="forestgreen")
+            ax.set_xticks(x_, best_comb_vals[att_order], rotation=90)
+            plt.show()
 
 
 if __name__ == "__main__":
@@ -654,6 +800,7 @@ if __name__ == "__main__":
     pn = np.append(p_names, ["769bc", "N0"])
     temp_cd = np.append(temp_cd, [57.7, 55.6])
 
+    """
     start = timer()
     mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
         f"{structs}_out",
@@ -674,7 +821,7 @@ if __name__ == "__main__":
     print(end_ - start)
 
     """
-    forward_search(
+    AttributeSearch(
         "RF",
         temp_cd,
         pn,
@@ -685,9 +832,7 @@ if __name__ == "__main__":
         paral=-1,
         c_val=None,
         silent=True,
-        ignore_err=True
-    )
-    """
+    ).model_based_search()
     """
     new_hb_vals = HB_DATA_DESC
     new_hy_vals = HY_DATA_DESC

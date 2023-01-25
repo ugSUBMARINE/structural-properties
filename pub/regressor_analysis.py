@@ -14,7 +14,6 @@ from sklearn.linear_model import Ridge, LinearRegression
 from sklearn.preprocessing import MinMaxScaler
 import joblib
 
-from run_rmsf_analysis import p_names, temp_cd, activity
 from properties import SaltBridges, HydrophobicClusterOwn
 
 
@@ -74,6 +73,27 @@ def spinning_wheele() -> None:
         - None
     """
     return itertools.cycle(["-", "\\", "|", "/"])
+
+
+def read_data(
+    file_path: str = "protein_data.tsv",
+) -> tuple[
+    np.ndarray[tuple[int], np.dtype[str]], np.ndarray[tuple[int], np.dtype[int | float]]
+]:
+    """read protein data file and return names and data 
+    :parameter
+        - file_path:
+          file path to the data file
+    :return
+        - names_
+          names of the proteins (should be the same as their pdb file name)
+        - data_
+          data from the file per protein
+    """
+    data = pd.read_csv(file_path, delimiter="\t")
+    names_ = np.asarray(data["protein_name"])
+    data_ = np.asarray(data["data"])
+    return names_, data_
 
 
 def single_stats(
@@ -212,8 +232,10 @@ def cross_val(
         par_pred_ = res.predict(p_x.loc[i_cv_bool])
         par_gt_ = p_y[i_cv_bool]
         # feature importances of RandomForestRegressor
-        if fi:
+        if fi == "f":
             par_fi_ = res.feature_importances_
+        elif fi == "c":
+            par_fi_ = res.coef_
         else:
             par_fi_ = None
         return par_pred_, par_gt_, par_fi_
@@ -237,8 +259,10 @@ def cross_val(
             res = predictor.fit(X.loc[fit_p], y[fit_p])
             predictions += res.predict(X.loc[i_cv_bool]).tolist()
             ground_truth += y[i_cv_bool].tolist()
-            if fi:
+            if fi == "f":
                 feature_imp.append(res.feature_importances_)
+            elif fi == "c":
+                feature_imp.append(res.coef_)
         predictions = np.asarray(predictions)
         ground_truth = np.asarray(ground_truth)
     else:
@@ -268,8 +292,8 @@ def cross_val(
     mae = np.mean(np.abs(predictions - ground_truth))
     r2 = r2_score(ground_truth, predictions)
     # mean feature importance over all k- folds
-    if fi:
-        feature_imp = np.mean(feature_imp, axis=0)
+    if fi is not None:
+        feature_imp = np.mean(np.abs(feature_imp), axis=0)
     else:
         feature_imp = [None]
     return mae, r2, feature_imp
@@ -309,17 +333,17 @@ def fit_data(
         - target:
           data to fit the model to
         - hb_param_num:
-          number of H-Bonds attributes to be tested
+          number of H-bonds attributes to be tested
         - hy_param_num:
-          number of Hydrophobic Cluster attributes to be tested
+          number of hydrophobic cluster attributes to be tested
         - sb_param_num:
-          number of Salt Bridges attributes to be tested
+          number of salt bridges attributes to be tested
         - ow_hb_vals:
-          if chosen H-Bonds attributes in *_vals should be overwritten
+          if chosen H-bonds attributes in *_vals should be overwritten
         - ow_hy_vals:
-          if chosen Hydrophobic Cluster attributes in *_vals should be overwritten
+          if chosen hydrophobic cluster attributes in *_vals should be overwritten
         - ow_sb_vals:
-          if chosen Salt Bridges attributes in *_vals should be overwritten
+          if chosen salt bridges attributes in *_vals should be overwritten
         - p_names_in:
           Name of the proteins and their respective files like 769bc for 769bc.pdb
         - chose_model_ind:
@@ -393,32 +417,32 @@ def fit_data(
     # make one big DataFrame
     master_frame = pd.concat([hb_df, hy_df, sb_df], axis=1)
     # scale values so each feature is in range (0, 1)
-    # """
     scaler = MinMaxScaler()
     scaler.fit(master_frame)
     inter_master_frame = scaler.transform(master_frame)
     master_frame = pd.DataFrame(
         inter_master_frame, index=master_frame.index, columns=master_frame.columns
     )
-    # """
     # make all single, double, ... NumMastervals combinations and test their performance
     master_vals = list(hb_vals) + list(hy_vals) + list(sb_vals)
 
     # whether feature importance is possible
-    get_fi = False
+    get_fi = None
     # set regressor
     if regressor == "LR":
         if not silent:
             print("Chosen Regressor: LinearRegression")
+        get_fi = "c"
         LOO_model = LinearRegression()
     elif regressor == "RI":
         if not silent:
             print("Chosen Regressor: Ridge")
+        get_fi = "c"
         LOO_model = Ridge()
     elif regressor == "RF":
         if not silent:
             print("Chosen Regressor: RandomForestRegressor")
-        get_fi = True
+        get_fi = "f"
         LOO_model = RandomForestRegressor(
             max_depth=3, random_state=0, n_estimators=10, oob_score=True, n_jobs=10
         )
@@ -429,7 +453,7 @@ def fit_data(
     elif regressor == "GB":
         if not silent:
             print("Chosen Regressor: GradientBoostingRegressor")
-        get_fi = True
+        get_fi = "f"
         LOO_model = GradientBoostingRegressor(n_estimators=10, random_state=0)
     else:
         raise KeyError(f"Invalid regressor encountered: '{regressor}'")
@@ -527,7 +551,21 @@ def plot_search(
     best_errors: np.ndarray[tuple[int], np.dtype[int | float]],
     performance_order: np.ndarray[tuple[int], np.dtype[int | float]],
     order: int | None = None,
+    save_plot: str | None = None,
 ) -> None:
+    """plots the best errors for each number of attributes
+    :parameter
+        - best_errors:
+          best error of each number of attributes
+        - performance_order:
+          index of the lowest error
+        - order:
+          whether the tick order should be reverser (for backward_search)
+        - save_plot:
+          file path and name if image should be saved
+    :return
+        - None
+    """
     fig, ax = plt.subplots(figsize=(32, 18))
     x_ = np.arange(len(best_errors))
     # mark best
@@ -546,6 +584,39 @@ def plot_search(
     ax.set_xticks(x_, np.arange(1, len(best_errors) + 1))
     ax.set_xlabel("number of attributes")
     ax.set_ylabel("cross validation error")
+    if save_plot is not None:
+        fig.savefig(save_plot)
+    plt.show()
+
+
+def plot_fi(
+    att_imp: list[np.ndarray[tuple[int], np.dtype[int | float]]],
+    performance_order: int,
+    best_comb_vals: np.ndarray[tuple[int], np.dtype[str]],
+    save_plot: str | None = None,
+):
+    """plots the attribute importance
+    :parameter
+        - att_imp:
+          attribute importances of each number of attributes for the lowest error
+        - performance_order:
+          index of the lowest error
+        - best_comb_vals:
+          names of the attributes of for the lowest error
+        - save_plot
+          file path and name if image should be saved
+    :return
+        - None
+    """
+    fig, ax = plt.subplots(layout="tight")
+    x_ = np.arange(len(att_imp[performance_order]))
+    att_order = np.argsort(att_imp[performance_order])
+    ax.bar(x_, att_imp[performance_order][att_order], color="forestgreen")
+    ax.set_xticks(x_, best_comb_vals[att_order], rotation=90)
+    ax.set_xlabel("attributes")
+    ax.set_ylabel("importance")
+    if save_plot is not None:
+        fig.savefig(save_plot.split(".")[0] + "feature_importance.png")
     plt.show()
 
 
@@ -563,6 +634,7 @@ class AttributeSearch:
         silent: bool = False,
         paral: int | None = None,
         plot_search_res: bool = True,
+        save_plot: str | None = None,
     ):
         """Different search functions to find the best attribute set
         :parameter
@@ -592,6 +664,8 @@ class AttributeSearch:
               integer to specify the number of cores or '-1' to use all cores
             - plot_search_res:
               whether the course of the error over the search should be plotted
+            - save_plot:
+              enter file path to save plot (including file name)
         :return
             - None
         """
@@ -606,6 +680,7 @@ class AttributeSearch:
         self.silent = silent
         self.paral = paral
         self.plot_search_res = plot_search_res
+        self.save_plot = save_plot
 
     def forward_search(self):
         """
@@ -626,9 +701,12 @@ class AttributeSearch:
         best_vals = []
         # all errors per added best attribute
         best_errors = []
+        # all feature importances
+        best_fis = []
         for i in range(total_num_vals):
             best_c = None
             best_err = np.inf
+            best_fi = None
             # search over each attribute that's not added so far
             for c in conc_vals[np.invert(np.isin(conc_vals, best_vals))]:
                 added_val = np.append(best_vals, c)
@@ -653,11 +731,14 @@ class AttributeSearch:
                 if best_err > mae_f[0]:
                     best_err = mae_f[0]
                     best_c = c
+                    best_fi = fis_f[0]
             best_vals.append(best_c)
             best_errors.append(best_err)
+            best_fis.append(best_fi)
 
         best_vals = np.asarray(best_vals)
         best_errors = np.asarray(best_errors)
+        best_fis = np.asarray(best_fis, dtype=object)
 
         # determine the best attribute combination and plot the cource of the search
         performance_order = np.argmin(best_errors)
@@ -667,7 +748,8 @@ class AttributeSearch:
             f"MAE: {best_errors[performance_order]:.4f}"
         )
         if self.plot_search_res:
-            plot_search(best_errors, performance_order)
+            plot_search(best_errors, performance_order, save_plot=self.save_plot)
+            plot_fi(best_fis, performance_order, best_comb_vals, self.save_plot)
 
     def backward_search(self):
         """
@@ -688,9 +770,12 @@ class AttributeSearch:
         best_vals = []
         # all errors per added best attribute
         best_errors = []
-        for i in range(total_num_vals-1):
+        # all feature importances
+        best_fis = []
+        for i in range(total_num_vals - 1):
             best_c = None
             best_err = np.inf
+            best_fi = None
             # search over each attribute that's not added so far
             for c in conc_vals:
                 i_cv = conc_vals[conc_vals != c]
@@ -715,10 +800,11 @@ class AttributeSearch:
                 if best_err > mae_f[0]:
                     best_err = mae_f[0]
                     best_c = i_cv
+                    best_fi = fis_f[0]
             conc_vals = best_c
             best_vals.append(best_c)
             best_errors.append(best_err)
-
+            best_fis.append(best_fi)
 
         # determine the best attribute combination and plot the cource of the search
         performance_order = np.argmin(best_errors)
@@ -728,7 +814,8 @@ class AttributeSearch:
             f"MAE: {best_errors[performance_order]:.4f}"
         )
         if self.plot_search_res:
-            plot_search(best_errors, performance_order, -1)
+            plot_search(best_errors, performance_order, -1, save_plot=self.save_plot)
+            plot_fi(best_fis, performance_order, best_comb_vals, self.save_plot)
 
     def model_based_search(self):
         """
@@ -784,47 +871,43 @@ class AttributeSearch:
         )
         if self.plot_search_res:
             # search error plot
-            plot_search(best_errors, performance_order, -1)
+            plot_search(best_errors, performance_order, -1, save_plot=self.save_plot)
             # feature importances plot
-            fig, ax = plt.subplots(layout="tight")
-            x_ = np.arange(len(att_imp[performance_order]))
-            att_order = np.argsort(att_imp[performance_order])
-            ax.bar(x_, att_imp[performance_order][att_order], color="forestgreen")
-            ax.set_xticks(x_, best_comb_vals[att_order], rotation=90)
-            plt.show()
+            plot_fi(att_imp, performance_order, best_comb_vals, self.save_plot)
 
 
 if __name__ == "__main__":
     pass
     structs = "af_all"
-    pn = np.append(p_names, ["769bc", "N0"])
-    temp_cd = np.append(temp_cd, [57.7, 55.6])
+    p_names, temp_cd = read_data()
 
     """
+    new_hb_vals = HB_DATA_DESC
+    new_hy_vals = HY_DATA_DESC
+    new_sb_vals = SB_DATA_DESC
     start = timer()
     mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
         f"{structs}_out",
-        force_np=2,
+        force_np=3,
         explore_all=True,
-        p_names_in=pn,
+        p_names_in=p_names,
         target=temp_cd,
-        regressor="RI",
+        regressor="KNN",
         # silent=True,
         ow_hb_vals=new_hb_vals,
         ow_hy_vals=new_hy_vals,
         ow_sb_vals=new_sb_vals,
         paral=-1,
-        # save_model="test",
-        # c_val=None,
+        c_val=None,
     )
     end_ = timer()
     print(end_ - start)
 
     """
     AttributeSearch(
-        "RF",
+        "LR",
         temp_cd,
-        pn,
+        p_names,
         structs,
         HB_DATA_DESC,
         HY_DATA_DESC,
@@ -832,62 +915,5 @@ if __name__ == "__main__":
         paral=-1,
         c_val=None,
         silent=True,
-    ).model_based_search()
-    """
-    new_hb_vals = HB_DATA_DESC
-    new_hy_vals = HY_DATA_DESC
-    new_sb_vals = SB_DATA_DESC
-    num_par = len(new_hb_vals) + len(new_hy_vals) + len(new_sb_vals)
-    regressors = ["KNN", "RI", "LR", "RF"]
-    col = ["forestgreen", "royalblue", "orange", "cyan"]
-    col_d = dict(zip(regressors, col))
-
-    fig, ax = plt.subplots(figsize=(32, 18))
-    start = timer()
-    pos = 0
-    while num_par > 0:
-        for cr, r in enumerate(regressors):
-            if num_par == 0:
-                break
-            mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
-                f"{structs}_out",
-                force_np=num_par,
-                explore_all=True,
-                p_names_in=pn,
-                target=temp_cd,
-                regressor=r,
-                silent=True,
-                ow_hb_vals=new_hb_vals,
-                ow_hy_vals=new_hy_vals,
-                ow_sb_vals=new_sb_vals,
-                # save_model="test",
-                c_val=None,
-                paral=-1
-            )
-
-            print(f"** {r} {num_par}**\nMAE: {mae_f[0]:.4f}\nR2: {r2_f[0]:.4f}\n")
-            if pos == 0:
-                lab = r
-            else:
-                lab = None
-            ax.bar(num_par - cr * 0.1, mae_f, width=0.1, label=lab, color=col_d[r])
-
-            if r == "RF":
-                # most import features but not the least one
-                importance_order = used_combinations_f[0][np.argsort(fis_f[0])[::-1]][
-                    :-1
-                ]
-                new_hb_vals = importance_order[np.isin(importance_order, HB_DATA_DESC)]
-                new_hy_vals = importance_order[np.isin(importance_order, HY_DATA_DESC)]
-                new_sb_vals = importance_order[np.isin(importance_order, SB_DATA_DESC)]
-                num_par = len(new_hb_vals) + len(new_hy_vals) + len(new_sb_vals)
-                # print(importance_order)
-        pos += 1
-    end_ = timer()
-    print(end_-start)
-    ax.set_xlabel("Number of attributes")
-    ax.set_ylabel("Mean absolute error")
-    plt.legend()
-    # fig.savefig("rf.png")
-    plt.show()
-    """
+        plot_search_res=True,
+    ).backward_search()

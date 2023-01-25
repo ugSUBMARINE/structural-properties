@@ -9,7 +9,7 @@ from h_bond_test import find_h_bonds
 from salt_bridges import find_saltbridges
 from hydrophobic_cluster import hydr_cluster
 
-from run_rmsf_analysis import p_names
+from regressor_analysis import read_data
 
 
 def check_dir(path: str) -> None:
@@ -27,7 +27,6 @@ def check_dir(path: str) -> None:
 def calculate(
     out_dir: str,
     struct_dir: str,
-    add_names: list | None = None,
     p_names_in: np.ndarray[tuple[int], np.dtype[str]] = None,
 ):
     """calculate properties for all given structures
@@ -36,25 +35,16 @@ def calculate(
           output directory name
         - struct_dir:
           path to the directory containing all structures
-        - add_names:
-          to add a protein name to the used names e.g. ["769bc"]
+        - p_names_in:
+          names of the proteins (and theirfore their file names)
 
     :return
         - func1return
           description
     """
-    if p_names_in is None:
-        global p_names
-    else:
-        p_names = p_names_in
-    if add_names is None:
-        add_names = []
-
-    p_names = np.append(p_names, add_names)
-
     # create dir to store results
     check_dir(out_dir)
-    for i in p_names:
+    for i in p_names_in:
         # to be compatible with structures files
         h_path = os.path.join(struct_dir, i + "_H.pdb")
         if os.path.isfile(h_path):
@@ -83,4 +73,5 @@ def calculate(
 
 if __name__ == "__main__":
     pass
-    calculate("structures_out", "structures/", ["N0", "769bc"])
+    p_names, _ = read_data() 
+    calculate("structures_out_", "structures/", p_names)

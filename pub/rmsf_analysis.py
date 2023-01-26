@@ -6,6 +6,13 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr, pearsonr
 
+from regressor_analysis import (
+    SB_DATA_DESC,
+    HY_DATA_DESC,
+    HB_DATA_DESC,
+)
+from properties import SaltBridges, HydrophobicClusterOwn
+
 np.set_printoptions(threshold=sys.maxsize)
 plt.style.use("seaborn-v0_8-whitegrid")
 plt.rcParams.update({"font.size": 25})
@@ -238,5 +245,127 @@ def map_bfactor(
     n.close()
 
 
+def plot_multi_files(
+    data_path,
+    hb_vals: list[str],
+    hy_vals: list[str],
+    sb_vals: list[str],
+    num_replicas: int = 10,
+    show_plots: bool = False,
+    save_plots: bool = False,
+):
+    """plot scatter plot for multiple files per protein
+    :parameter
+        - data_path:
+          path where the data to all proteins is stored
+        - hb_vals, hy_vals, sb_vals:
+          attributes to plot like in *_DATA_DESC
+        - num_replicas:
+          number of structures per protein
+        - show_plots:
+          only possible for num_replicas > 1
+        - save_plots:
+          only possible for num_replicas > 1
+    :return
+        - None
+    """
+    p_names = np.asarray(
+        ["4alb", "N2", "N4", "N5", "N31", "N55", "N80", "N122", "N124", "N134"]
+    )
+    # name of the folders where the data is stored
+    data_folders = ["saltbridges", "h_bonds", "hydrophobic_cluster"]
+    data_pos = dict(zip(data_folders, np.arange(len(data_folders))))
+
+    multi_data = []
+    for i in data_folders:
+        multi_data.append([])
+
+    # for each protein
+    for i in p_names:
+        # for each data attribute
+        for a in data_folders:
+            # csv dir path
+            c_path = os.path.join(data_path, i, a)
+            # all csv files
+            files = os.listdir(c_path)
+            # calculate data
+            inter_data = []
+            for c in files:
+                ac_path = os.path.join(c_path, c)
+                if a == "saltbridges":
+                    sb = SaltBridges(ac_path, -1, SB_DATA_DESC)
+                    inter_data.append(list(sb.stats())[:-1])
+                elif a == "h_bonds":
+                    hb = SaltBridges(ac_path, -1, HB_DATA_DESC)
+                    inter_data.append(list(hb.stats()[:-1]))
+                else:
+                    hy = HydrophobicClusterOwn(ac_path, HY_DATA_DESC)
+                    inter_data.append(list(hy.stats())[:-1])
+            # store data depending on one or multiple files per protein
+            multi_data[data_pos[a]].append(inter_data)
+
+    # can have higher indices than shown by single_stats because it shows
+    # only values which have more than one unique value
+    hb_ind = [int(np.argwhere(HB_DATA_DESC == i)) for i in hb_vals]
+    hy_ind = [int(np.argwhere(HY_DATA_DESC == i)) for i in hy_vals]
+    sb_ind = [int(np.argwhere(SB_DATA_DESC == i)) for i in sb_vals]
+
+    fig, ax = plt.subplots(
+        len(data_folders),
+        # max([hb_param_num, hy_param_num, sb_param_num]),
+        3,
+        figsize=(32, 18),
+    )
+    # p_names = [i.replace("4alb", "BsPAD") for i in p_names]
+    for i in range(len(data_folders)):
+        if data_folders[i] == "h_bonds":
+            att_inds = hb_ind
+            dn = "Hydrogen Bonds"
+            ddes = HB_DATA_DESC
+        elif data_folders[i] == "hydrophobic_cluster":
+            att_inds = hy_ind
+            dn = "Hydrophobic Cluster"
+            ddes = HY_DATA_DESC
+        elif data_folders[i] == "saltbridges":
+            att_inds = sb_ind
+            dn = "Salt Bridges"
+            ddes = SB_DATA_DESC
+        else:
+            raise KeyError("Invalid data folder encountered")
+        for p in range(len(p_names)):
+            for ca, a in enumerate(att_inds):
+                ax[i, ca].scatter(
+                    [p] * num_replicas,
+                    np.asarray(multi_data[i][p])[:, a],
+                    label=p_names[p],
+                )
+                ax[i, ca].plot(
+                    [p - 0.2, p + 0.2],
+                    [np.median(np.asarray(multi_data[i][p])[:, a])] * 2,
+                    color="black",
+                    marker="x",
+                    linewidth=2,
+                )
+                ax[i, ca].set_title(dn)
+                ax[i, ca].set_ylabel(ddes[a])
+                if i == len(data_folders) - 1:
+                    ax[i, ca].set_xticks(np.arange(len(p_names)), p_names, rotation=45)
+                else:
+                    ax[i, ca].tick_params(bottom=False, labelbottom=False)
+    fig.tight_layout(pad=5, w_pad=1.5, h_pad=1.5)
+    if save_plots:
+        fig.savefig("att_scatter.png")
+    if show_plots:
+        plt.show()
+
+
 if __name__ == "__main__":
     pass
+
+    plot_multi_files(
+        "md_sim_structures/",
+        HB_DATA_DESC[:3],
+        HY_DATA_DESC[:3],
+        SB_DATA_DESC[:3],
+        show_plots=True,
+    )

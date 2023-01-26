@@ -6,13 +6,13 @@ import numpy as np
 import pandas as pd
 import joblib
 
-from property_analysis import (
+from regressor_analysis import (
     SB_DATA_DESC,
     HY_DATA_DESC,
     HB_DATA_DESC,
-    read_data
+    read_data,
+    get_data
 )
-from run_property_analysis import get_data
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -63,9 +63,8 @@ def predict(
     )
 
     # reading the saved parameters for the model and loading the model
-    param_file = open(f"saved_models/{model_name}_setting.txt", "r")
-    model_param = param_file.readline().strip().split(",")
-    param_file.close()
+    with open(f"saved_models/{model_name}_setting.txt", "r") as param_file:
+        model_param = param_file.readline().strip().split(",")
 
     data = master_frame.loc[:, model_param]
     model_file_path = f"saved_models/{model_name}.save"

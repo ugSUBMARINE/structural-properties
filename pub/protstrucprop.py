@@ -71,11 +71,11 @@ def directed_search(args):
     # select search method
     method = args.search_method
     if method == 1:
-        att_search.forward_search()
+        att_search.forward_search(args.save_model)
     elif method == 2:
-        att_search.backward_search()
+        att_search.backward_search(args.save_model)
     else:
-        att_search.model_based_search()
+        att_search.model_based_search(args.save_model)
 
 
 def make_predictions(args):
@@ -287,6 +287,15 @@ def main():
         required=False,
         help="0 model_based_search, 1 forward_search, 2 backward_search",
     )
+    ds_parser.add_argument(
+        "-s",
+        "--save_model",
+        default=None,
+        type=str,
+        required=False,
+        help="How the saved model should be named - None to not save, "
+        "directory 'saved_models' will be created if it doesn't exist",
+    )
     ds_parser.set_defaults(func=directed_search)
 
     # predict parser
@@ -317,7 +326,8 @@ def main():
         "-sr",
         "--save_results",
         action="store_true",
-        help="set flag to store the prediction results in the 'results' directory",
+        help="set flag to store the prediction results in the 'results' directory as "
+        "json",
     )
     p_parser.add_argument(
         "-si",

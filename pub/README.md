@@ -1,7 +1,16 @@
 This directory contains code to reproduce the results obtained for the publication and the data needed to do so.
 It also can be used to use the same kind of analysis for a different set of proteins.
 
+In order to install the required packages run:
+```
+python3 -m venv /PATH/TO/YOUR/VENV
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
 ## RMSF analysis
+This is a script to compare (and visualize) the RMSF values of different proteins to a certain target value per protein and test their correlation.
+
 All described settings can be changed/set in the `PARAMETERS` section in the `run_rmsf_analysis.py` file.
 The structures of all proteins need to be specified in `structure_path`. The RMSF files are expected to be in a directory like `DIR_NAME/PROTEIN_NAME/FileNameWithIncreasingNumber.dat`. The multiple sequence alignment file (clustal w format) with the same sequences as the protein structures in the pdb files needs to be set in `algn_file`. 
 
@@ -9,6 +18,8 @@ Then the analysis can be run with `python3 run_rmsf_analysis.py`
 
 
 ## Property analysis
+This contains the program protstrucprop. It can be used to calculate the hydrophobic cluster, H-bond networks and salt bridge networks of several structures using `properties`. Furthermore `greedy`and `directed` can be used to find the attribute combination to minimize the regression error for a certain target value and `predict` can be used to use a fitted regression model to predict the target value of interest for other proteins.
+
 For general help of the programs use `python3 protstrucprop.py -h`
 
 Supported models are:

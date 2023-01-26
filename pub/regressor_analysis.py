@@ -80,7 +80,7 @@ def read_data(
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[str]], np.ndarray[tuple[int], np.dtype[int | float]]
 ]:
-    """read protein data file and return names and data 
+    """read protein data file and return names and data
     :parameter
         - file_path:
           file path to the data file
@@ -494,7 +494,7 @@ def fit_data(
             used_combinations.append(c)
     mae = np.asarray(mae)
     r2 = np.asarray(r2)
-    fis = np.asarray(fis)
+    fis = np.asarray(fis, dtype=object)
     used_combinations = np.asarray(used_combinations, dtype=object)
 
     performance_order = np.argsort(mae)
@@ -533,16 +533,18 @@ def fit_data(
         print(f"\nChosen combination: {used_combinations[best_comp]}")
 
     # fit model to data
-    fit_model = LOO_model.fit(master_frame.loc[:, c], target)
-    # save fitted model
+    fit_model = LOO_model.fit(master_frame.loc[:, used_combinations[best_comp]], target)
+    # save fitted model and scaler
     if save_model is not None:
         if not os.path.isdir("saved_models"):
             os.mkdir("saved_models")
         sett = open(os.path.join("saved_models", save_model + "_setting.txt"), "w+")
         sett.write(",".join(list(used_combinations[best_comp])))
         sett.close()
-        model_path = os.path.join("saved_models", save_model + ".pickle")
+        model_path = os.path.join("saved_models", save_model + ".save")
         joblib.dump(fit_model, model_path)
+        scaler_path = os.path.join("saved_models", save_model + "_scaler.save")
+        joblib.dump(scaler, scaler_path)
 
     return mae, r2, fis, used_combinations, fit_model
 
@@ -714,7 +716,7 @@ class AttributeSearch:
                 new_hy_vals = added_val[np.isin(added_val, self.hy_vals)]
                 new_sb_vals = added_val[np.isin(added_val, self.sb_vals)]
                 mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
-                    f"{self.structs_in}_out",
+                    f"{self.structs_in}",
                     force_np=added_val.shape[0],
                     explore_all=True,
                     p_names_in=self.p_names_in,
@@ -754,7 +756,7 @@ class AttributeSearch:
     def backward_search(self):
         """
         tries to find the best attribute combination by greedy removing the attribute
-        whichs removal yields the lowest errors
+        which's removal yields the lowest errors
         :parameters
             - None
         :return
@@ -783,7 +785,7 @@ class AttributeSearch:
                 new_hy_vals = i_cv[np.isin(i_cv, self.hy_vals)]
                 new_sb_vals = i_cv[np.isin(i_cv, self.sb_vals)]
                 mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
-                    f"{self.structs_in}_out",
+                    f"{self.structs_in}",
                     force_np=i_cv.shape[0],
                     explore_all=True,
                     p_names_in=self.p_names_in,
@@ -840,7 +842,7 @@ class AttributeSearch:
         att_imp = []
         for i in range(total_num_vals):
             mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
-                f"{self.structs_in}_out",
+                f"{self.structs_in}",
                 force_np=conc_vals.shape[0],
                 explore_all=True,
                 p_names_in=self.p_names_in,
@@ -881,24 +883,24 @@ if __name__ == "__main__":
     structs = "af_all"
     p_names, temp_cd = read_data()
 
-    """
     new_hb_vals = HB_DATA_DESC
     new_hy_vals = HY_DATA_DESC
     new_sb_vals = SB_DATA_DESC
     start = timer()
     mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
         f"{structs}_out",
-        force_np=3,
+        force_np=2,
         explore_all=True,
         p_names_in=p_names,
         target=temp_cd,
-        regressor="KNN",
+        regressor="LR",
         # silent=True,
         ow_hb_vals=new_hb_vals,
         ow_hy_vals=new_hy_vals,
         ow_sb_vals=new_sb_vals,
         paral=-1,
         c_val=None,
+        save_model="test",
     )
     end_ = timer()
     print(end_ - start)
@@ -908,7 +910,7 @@ if __name__ == "__main__":
         "LR",
         temp_cd,
         p_names,
-        structs,
+        structs+"_out",
         HB_DATA_DESC,
         HY_DATA_DESC,
         SB_DATA_DESC,
@@ -916,4 +918,5 @@ if __name__ == "__main__":
         c_val=None,
         silent=True,
         plot_search_res=True,
-    ).backward_search()
+    ).model_based_search()
+    """

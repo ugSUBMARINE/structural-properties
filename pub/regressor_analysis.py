@@ -64,6 +64,7 @@ HB_DATA_DESC = np.asarray(
 )
 
 
+############################ utility functions start ##################################
 def spinning_wheele() -> None:
     """uses itertools to be able to take the next sign with 'next' to create a spinning
     wheel
@@ -94,6 +95,38 @@ def read_data(
     names_ = np.asarray(data["protein_name"])
     data_ = np.asarray(data["data"])
     return names_, data_
+
+
+def save_model_data(
+    save_model: str,
+    fit_model,
+    scaler,
+    model_attributes: np.ndarray[tuple[int], np.dtype[str]],
+):
+    """saves fitted model, their attributes and the used scaler
+    :parameter
+        - save_model:
+          Name of the model to saved_models
+        - fit_model:
+          the fitted model object
+        - scaler
+          the attapted scaler for the dataset
+        - model_attributes:
+          which attributes were used for the model to train
+    :return
+        - None
+    """
+    if not os.path.isdir("saved_models"):
+        os.mkdir("saved_models")
+    with open(os.path.join("saved_models", save_model + "_setting.txt"), "w+") as sett:
+        sett.write(",".join(list(model_attributes)))
+    model_path = os.path.join("saved_models", save_model + ".save")
+    joblib.dump(fit_model, model_path)
+    scaler_path = os.path.join("saved_models", save_model + "_scaler.save")
+    joblib.dump(scaler, scaler_path)
+
+
+############################ utility functions end ####################################
 
 
 def single_stats(
@@ -536,17 +569,14 @@ def fit_data(
     fit_model = LOO_model.fit(master_frame.loc[:, used_combinations[best_comp]], target)
     # save fitted model and scaler
     if save_model is not None:
-        if not os.path.isdir("saved_models"):
-            os.mkdir("saved_models")
-        sett = open(os.path.join("saved_models", save_model + "_setting.txt"), "w+")
-        sett.write(",".join(list(used_combinations[best_comp])))
-        sett.close()
-        model_path = os.path.join("saved_models", save_model + ".save")
-        joblib.dump(fit_model, model_path)
-        scaler_path = os.path.join("saved_models", save_model + "_scaler.save")
-        joblib.dump(scaler, scaler_path)
+        save_model_data(
+            save_model=save_model,
+            fit_model=fit_model,
+            model_attributes=used_combinations[best_comp],
+            scaler=scaler,
+        )
 
-    return mae, r2, fis, used_combinations, fit_model
+    return mae, r2, fis, used_combinations, fit_model, scaler
 
 
 def plot_search(
@@ -684,12 +714,13 @@ class AttributeSearch:
         self.plot_search_res = plot_search_res
         self.save_plot = save_plot
 
-    def forward_search(self):
+    def forward_search(self, save_model: str | None = None):
         """
         tries to find the best attribute combination by greedy adding the attribute
         that yields in the lowest error
         :parameters
-            - None
+            - save_model:
+              how the saved model should be named - None to not save
         :return
             - None
         """
@@ -705,17 +736,31 @@ class AttributeSearch:
         best_errors = []
         # all feature importances
         best_fis = []
+        # for model saving
+        oa_model = None
+        oa_scaler = None
+        oa_vals = None
         for i in range(total_num_vals):
             best_c = None
             best_err = np.inf
             best_fi = None
+            best_m = None
+            best_s = None
+            best_v = None
             # search over each attribute that's not added so far
             for c in conc_vals[np.invert(np.isin(conc_vals, best_vals))]:
                 added_val = np.append(best_vals, c)
                 new_hb_vals = added_val[np.isin(added_val, self.hb_vals)]
                 new_hy_vals = added_val[np.isin(added_val, self.hy_vals)]
                 new_sb_vals = added_val[np.isin(added_val, self.sb_vals)]
-                mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
+                (
+                    mae_f,
+                    r2_f,
+                    fis_f,
+                    used_combinations_f,
+                    fit_model_f,
+                    scaler_f,
+                ) = fit_data(
                     f"{self.structs_in}",
                     force_np=added_val.shape[0],
                     explore_all=True,
@@ -734,9 +779,15 @@ class AttributeSearch:
                     best_err = mae_f[0]
                     best_c = c
                     best_fi = fis_f[0]
+                    best_m = fit_model_f
+                    best_s = scaler_f
+                    best_v = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
             best_vals.append(best_c)
             best_errors.append(best_err)
             best_fis.append(best_fi)
+            oa_model = best_m
+            oa_scaler = best_s
+            oa_vals = best_v
 
         best_vals = np.asarray(best_vals)
         best_errors = np.asarray(best_errors)
@@ -752,13 +803,16 @@ class AttributeSearch:
         if self.plot_search_res:
             plot_search(best_errors, performance_order, save_plot=self.save_plot)
             plot_fi(best_fis, performance_order, best_comb_vals, self.save_plot)
+        if save_model is not None:
+            save_model_data(save_model, oa_model, oa_scaler, oa_vals)
 
-    def backward_search(self):
+    def backward_search(self, save_model: str | None = None):
         """
         tries to find the best attribute combination by greedy removing the attribute
         which's removal yields the lowest errors
         :parameters
-            - None
+            - save_model:
+              how the saved model should be named - None to not save
         :return
             - None
         """
@@ -774,17 +828,31 @@ class AttributeSearch:
         best_errors = []
         # all feature importances
         best_fis = []
+        # for model saving
+        oa_model = None
+        oa_scaler = None
+        oa_vals = None
         for i in range(total_num_vals - 1):
             best_c = None
             best_err = np.inf
             best_fi = None
+            best_m = None
+            best_s = None
+            best_v = None
             # search over each attribute that's not added so far
             for c in conc_vals:
                 i_cv = conc_vals[conc_vals != c]
                 new_hb_vals = i_cv[np.isin(i_cv, self.hb_vals)]
                 new_hy_vals = i_cv[np.isin(i_cv, self.hy_vals)]
                 new_sb_vals = i_cv[np.isin(i_cv, self.sb_vals)]
-                mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
+                (
+                    mae_f,
+                    r2_f,
+                    fis_f,
+                    used_combinations_f,
+                    fit_model_f,
+                    scaler_f,
+                ) = fit_data(
                     f"{self.structs_in}",
                     force_np=i_cv.shape[0],
                     explore_all=True,
@@ -803,10 +871,16 @@ class AttributeSearch:
                     best_err = mae_f[0]
                     best_c = i_cv
                     best_fi = fis_f[0]
+                    best_m = fit_model_f
+                    best_s = scaler_f
+                    best_v = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
             conc_vals = best_c
             best_vals.append(best_c)
             best_errors.append(best_err)
             best_fis.append(best_fi)
+            oa_model = best_m
+            oa_scaler = best_s
+            oa_vals = best_v
 
         # determine the best attribute combination and plot the cource of the search
         performance_order = np.argmin(best_errors)
@@ -818,13 +892,16 @@ class AttributeSearch:
         if self.plot_search_res:
             plot_search(best_errors, performance_order, -1, save_plot=self.save_plot)
             plot_fi(best_fis, performance_order, best_comb_vals, self.save_plot)
+        if save_model is not None:
+            save_model_data(save_model, oa_model, oa_scaler, oa_vals)
 
-    def model_based_search(self):
+    def model_based_search(self, save_model: str | None = None):
         """
         uses the coef_ or feature_importances_ of a model to iteratively remove the
         attribute with the lowest importances
         :parameters
-            - None
+            - save_model:
+              how the saved model should be named - None to not save
         :return
             - None
         """
@@ -840,8 +917,13 @@ class AttributeSearch:
         best_errors = []
         # attribute importances
         att_imp = []
+        # for model saving
+        oa_err = np.inf
+        oa_model = None
+        oa_scaler = None
+        oa_vals = None
         for i in range(total_num_vals):
-            mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
+            mae_f, r2_f, fis_f, used_combinations_f, fit_model_f, scaler_f = fit_data(
                 f"{self.structs_in}",
                 force_np=conc_vals.shape[0],
                 explore_all=True,
@@ -858,6 +940,13 @@ class AttributeSearch:
             best_errors.append(mae_f)
             att_imp.append(fis_f[0])
             best_vals.append(conc_vals)
+            if oa_err > mae_f:
+                oa_err = mae_f
+                oa_model = fit_model_f
+                oa_scaler = scaler_f
+                oa_vals = np.concatenate(
+                    (new_hb_vals, new_hy_vals, new_sb_vals)
+                )
             # sort attributes for their best feature importances
             conc_vals = conc_vals[np.argsort(fis_f[0])[::-1]][:-1]
             new_hb_vals = conc_vals[np.isin(conc_vals, self.hb_vals)]
@@ -876,6 +965,8 @@ class AttributeSearch:
             plot_search(best_errors, performance_order, -1, save_plot=self.save_plot)
             # feature importances plot
             plot_fi(att_imp, performance_order, best_comb_vals, self.save_plot)
+        if save_model is not None:
+            save_model_data(save_model, oa_model, oa_scaler, oa_vals)
 
 
 if __name__ == "__main__":
@@ -883,13 +974,14 @@ if __name__ == "__main__":
     structs = "af_all"
     p_names, temp_cd = read_data()
 
+    """
     new_hb_vals = HB_DATA_DESC
     new_hy_vals = HY_DATA_DESC
     new_sb_vals = SB_DATA_DESC
     start = timer()
-    mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
+    mae_f, r2_f, fis_f, used_combinations_f, fit_model_f, scaler_f = fit_data(
         f"{structs}_out",
-        force_np=2,
+        force_np=1,
         explore_all=True,
         p_names_in=p_names,
         target=temp_cd,
@@ -910,7 +1002,7 @@ if __name__ == "__main__":
         "LR",
         temp_cd,
         p_names,
-        structs+"_out",
+        structs + "_out",
         HB_DATA_DESC,
         HY_DATA_DESC,
         SB_DATA_DESC,
@@ -918,5 +1010,4 @@ if __name__ == "__main__":
         c_val=None,
         silent=True,
         plot_search_res=True,
-    ).model_based_search()
-    """
+    ).backward_search()

@@ -9,42 +9,69 @@ Then the analysis can be run with `python3 run_rmsf_analysis.py`
 
 
 ## Property analysis
+For general help of the programs use `python3 protstrucprop.py -h`
+
+Supported models are:
+* Linear Regression
+* Ridge regression
+* Random Forest Regression
+* Gradient Boost Regression
+* K-nearest neighbors Regression
+
 To perform the analysis, the following steps must be carried out:
-*   Calculating the data for each protein with `python3 calc_prop.py`
-    * uses function `calculate`
-    * all .pdb files need to be stored in one directory
-    * In this file the name/path to the directory containing all protein structures need to be set in `struct_dir` and the names of the files (without the .pdb) need to be set in `p_names`. 
-    * This will calculate H-Bonds, hydrophobic cluster and salt bridges and store them in `out_dir`.
-* run `python3 run_property_analysis.py`
-    * uses function `fit_data`
-    * Set the `data_path` to the same as `out_dir` chosen in `calc_prop`
-    * Define the model name in `save_model` using a desired name instead of None
-    * Set `model_ind` to either `None` to use the model with the best (lowest) mean squared error, e.g. `1` for the model with index 1 or e.g. `"!4"` for the best model of the best 10 that is closest to having 4 parameters to store the model and also it's used attributes from `*_DATA_DESC`. 
-    * use `force_mi` to only store a desired model if it has the desired number of parameters set with `!`
-    * change `target` if data should be fit to something else than `temp_cd`
-    * add proteins and temps with `add_names` and `add_temp` respectively
-    * set number of attributes with `*_param_num`
-    * overwrite the best correlating attributes with `ow_*_vals`
-    * changed protein names from global `p_names` with `p_names_in`
-    * use `force_np` not test all combinations from 1 to 9 but only the number of combinations set
-    * set `explore_all` to ignore `*_vals` and use all `*_DATA_DESC` to find best parameter combination
-* run `python3 predict.py`
-    * uses function `predict`
-    * Set the `model_name` like specified in `save_model` from `run_property_analysis.py` and the `data_dir` like `out_dir` from `calc_prop.py`.
-    * add proteins that are not in the `p_names` put in the `out_dir` to calculate their values using a given fitted model in `add`
-    * set `save_results` to save all predictions for all proteins as json.
-    * This will predict the desired value and the ordering of all proteins
+*   Calculating the properties for each protein 
+    *`python3 protstrucprop.py properties --out_dir /PATH/TO/OUTPUT/DIR --struct_dir /PATH/TO/PDB/FILES --name_path /PATH/TO/PROTEIN/DATA`
+    * The name/path to the directory containing all protein structures need to be set in `struct_dir` and the names of the files (without the .pdb) need to be set in `name_path`
+    * `name_path`needs to be a tsv file where each row is a protein name like their pdb files (without .pdb) are named and a target value for each protein used in the regression later
+    * This will calculate H-Bonds, hydrophobic cluster and salt bridges and store them in `out_dir`
+    * Run `p3 protstrucprop.py properties -h` for parameter description
 
 
-For all files, if `p_names` are different than the set on add `p_names = np.array(["Protein1", "Protein2"])`.
+* Greedy search for the best attribute combination to minimize the prediction error
+    * fits a linear regression model to the 3 most correlating attributes of each attribute group 
+        * `python3 protstrucprop.py greedy --name_path /PATH/TO/PROTEIN/DATA --prop_dir /PATH/TO/OUTPUT/DIR --param_number 3 -regressor LR`
+        * tests each possible combination starting with single to `param_number` * 3 combinations 
+        * will take long if `param_number` > 3 due to the high number of possible combinations
+    * fits a ridge regression model to all possible 2 attribute combinations
+        * `python3 protstrucprop.py greedy --name_path /PATH/TO/PROTEIN/DATA --prop_dir /PATH/TO/OUTPUT/DIR --explore_all --force_nparam 2 --regressor RI `
+        * a `force_nparam` > 5 will take long due to the high number of possible combinations
+    * searches for the best attribute combination given a certain search method
+        * `python3 protstrucprop.py directed --name_path /PATH/TO/PROTEIN/DATA --prop_dir /PATH/TO/OUTPUT/DIR --search_method 1 -regressor KNN --silent`
+            * forward search - greedy checks attributes and adds the attribute that creates the lowest error to produce the same check in the next round for attributes that have not been added so far and returns the best found combination
+            * backward search - reverse version of forward seach - removes one attribute per round whos removal leads to the lowest error
+            * model based search - same as backward search but removes one attribute per round that has the lowest feature importance (not possible for k-nearest neighbors)
+            * `silent` supresses the biggest outputs in the terminal
+    * Run `p3 protstrucprop.py greedy -h` and `p3 protstrucprop.py directed -h` for parameter description
+        * cross validation mode can be changed
+        * search can be run in parallel
+        * search course plots and feature importance plots can be made
+        * models can be saved
+* Predict with fitted models
+    * predicts values for proteins with calculate attributes
+        * `python3 protstrucprop.py predict --name_path /PATH/TO/PROTEIN/DATA --model_name NAMEOFTHEMODEL --prop_dir /PATH/TO/OUTPUT/DIR
+        * `name_path` is a tsv file like used above but can have an empty colum for target values
+    * Run `p3 protstrucprop.py predict -h` for parameter description
+
 
 ### File structures from property analysis
-File structure created by `calc_prop.py`
+File structure created by `protstrucprop properties`
 ```
 '- out_dir
     |- PROTEIN_NAME_hb.csv
     |- PROTEIN_NAME_hy.csv
     '- PROTEIN_NAME_sb.csv
+```
+File structure created by `protstrucprop greedy` and `protstrucprop directed`
+```
+'- saved_models
+    |- MODELNAME.save
+    |- MODELNAME_scaler.save
+    '- MODELNAME_settings.txt
+```
+File structure created by `protstrucprop predict`
+```
+'- results
+    '- MODELNAME.json
 ```
 
 

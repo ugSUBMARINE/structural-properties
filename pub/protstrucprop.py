@@ -32,7 +32,7 @@ def greedy_parameter(args):
         new_sb_vals = SB_DATA_DESC
 
     # fit model to data
-    mae_f, r2_f, fis_f, used_combinations_f, fit_model_f = fit_data(
+    mae_f, r2_f, fis_f, used_combinations_f, fit_model_f , scaler_f = fit_data(
         data_path=args.prop_dir,
         target=temp_cd,
         hb_param_num=args.param_number,
@@ -48,6 +48,7 @@ def greedy_parameter(args):
         c_val=args.cross_validation,
         silent=args.silent,
         paral=args.parallel,
+        plot_feature_imp=args.search_plot
     )
 
 
@@ -215,6 +216,12 @@ def main():
         default=None,
         help="None to not parallelize the cross validation, "
         "integer to specify the number of cores or '-1' to use all cores",
+    )
+    gs_parser.add_argument(
+        "-sp",
+        "--search_plot",
+        action="store_true",
+        help="set flag to plot feature importance",
     )
     gs_parser.set_defaults(func=greedy_parameter)
 

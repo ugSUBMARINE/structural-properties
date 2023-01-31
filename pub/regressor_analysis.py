@@ -126,6 +126,79 @@ def save_model_data(
     joblib.dump(scaler, scaler_path)
 
 
+def plot_search(
+    best_errors: np.ndarray[tuple[int], np.dtype[int | float]],
+    performance_order: np.ndarray[tuple[int], np.dtype[int | float]],
+    order: int | None = None,
+    save_plot: str | None = None,
+) -> None:
+    """plots the best errors for each number of attributes
+    :parameter
+        - best_errors:
+          best error of each number of attributes
+        - performance_order:
+          index of the lowest error
+        - order:
+          whether the tick order should be reverser (for backward_search)
+        - save_plot:
+          file path and name if image should be saved
+    :return
+        - None
+    """
+    fig, ax = plt.subplots(figsize=(32, 18))
+    x_ = np.arange(len(best_errors))
+    # mark best
+    ax.scatter(
+        x_[performance_order],
+        best_errors[performance_order],
+        color="firebrick",
+        s=150,
+        marker="^",
+    )
+    # error course
+    ax.plot(best_errors, marker="o", color="forestgreen")
+    # reorder labels
+    if order == -1:
+        x_ = x_[::-1]
+    ax.set_xticks(x_, np.arange(1, len(best_errors) + 1))
+    ax.set_xlabel("number of attributes")
+    ax.set_ylabel("cross validation error")
+    if save_plot is not None:
+        fig.savefig(save_plot)
+    plt.show()
+
+
+def plot_fi(
+    att_imp: list[np.ndarray[tuple[int], np.dtype[int | float]]],
+    performance_order: int,
+    best_comb_vals: np.ndarray[tuple[int], np.dtype[str]],
+    save_plot: str | None = None,
+):
+    """plots the attribute importance
+    :parameter
+        - att_imp:
+          attribute importances of each number of attributes for the lowest error
+        - performance_order:
+          index of the lowest error
+        - best_comb_vals:
+          names of the attributes of for the lowest error
+        - save_plot
+          file path and name if image should be saved
+    :return
+        - None
+    """
+    fig, ax = plt.subplots(layout="tight")
+    x_ = np.arange(len(att_imp[performance_order]))
+    att_order = np.argsort(att_imp[performance_order])
+    ax.bar(x_, att_imp[performance_order][att_order], color="forestgreen")
+    ax.set_xticks(x_, best_comb_vals[att_order], rotation=90)
+    ax.set_xlabel("attributes")
+    ax.set_ylabel("importance")
+    if save_plot is not None:
+        fig.savefig(save_plot.split(".")[0] + "feature_importance.png")
+    plt.show()
+
+
 ############################ utility functions end ####################################
 
 
@@ -352,6 +425,7 @@ def fit_data(
     c_val: int | None = 5,
     silent: bool = False,
     paral: int | None = None,
+    plot_feature_imp: bool = False,
 ) -> None:
     """fit models, find the best parameter combination and plot scatter for multi data
     per protein
@@ -402,6 +476,8 @@ def fit_data(
         - paral:
           None to not parallelize the cross validation, integer to specify the number
           of cores or '-1' to use all cores
+        - plot_feature_imp:
+          set True to plot feature importance
     :return
         - None
     """
@@ -564,7 +640,11 @@ def fit_data(
                 return
     if not silent:
         print(f"\nChosen combination: {used_combinations[best_comp]}")
-
+        best_fi = fis[best_comp]
+        if best_fi[0] is not None:
+            print("Attribute importances: " + " - ".join([f"{i:.2f}" for i in best_fi]))
+    if plot_feature_imp:
+        plot_fi(fis, best_comp, np.asarray(used_combinations[best_comp]))
     # fit model to data
     fit_model = LOO_model.fit(master_frame.loc[:, used_combinations[best_comp]], target)
     # save fitted model and scaler
@@ -577,79 +657,6 @@ def fit_data(
         )
 
     return mae, r2, fis, used_combinations, fit_model, scaler
-
-
-def plot_search(
-    best_errors: np.ndarray[tuple[int], np.dtype[int | float]],
-    performance_order: np.ndarray[tuple[int], np.dtype[int | float]],
-    order: int | None = None,
-    save_plot: str | None = None,
-) -> None:
-    """plots the best errors for each number of attributes
-    :parameter
-        - best_errors:
-          best error of each number of attributes
-        - performance_order:
-          index of the lowest error
-        - order:
-          whether the tick order should be reverser (for backward_search)
-        - save_plot:
-          file path and name if image should be saved
-    :return
-        - None
-    """
-    fig, ax = plt.subplots(figsize=(32, 18))
-    x_ = np.arange(len(best_errors))
-    # mark best
-    ax.scatter(
-        x_[performance_order],
-        best_errors[performance_order],
-        color="firebrick",
-        s=150,
-        marker="^",
-    )
-    # error course
-    ax.plot(best_errors, marker="o", color="forestgreen")
-    # reorder labels
-    if order == -1:
-        x_ = x_[::-1]
-    ax.set_xticks(x_, np.arange(1, len(best_errors) + 1))
-    ax.set_xlabel("number of attributes")
-    ax.set_ylabel("cross validation error")
-    if save_plot is not None:
-        fig.savefig(save_plot)
-    plt.show()
-
-
-def plot_fi(
-    att_imp: list[np.ndarray[tuple[int], np.dtype[int | float]]],
-    performance_order: int,
-    best_comb_vals: np.ndarray[tuple[int], np.dtype[str]],
-    save_plot: str | None = None,
-):
-    """plots the attribute importance
-    :parameter
-        - att_imp:
-          attribute importances of each number of attributes for the lowest error
-        - performance_order:
-          index of the lowest error
-        - best_comb_vals:
-          names of the attributes of for the lowest error
-        - save_plot
-          file path and name if image should be saved
-    :return
-        - None
-    """
-    fig, ax = plt.subplots(layout="tight")
-    x_ = np.arange(len(att_imp[performance_order]))
-    att_order = np.argsort(att_imp[performance_order])
-    ax.bar(x_, att_imp[performance_order][att_order], color="forestgreen")
-    ax.set_xticks(x_, best_comb_vals[att_order], rotation=90)
-    ax.set_xlabel("attributes")
-    ax.set_ylabel("importance")
-    if save_plot is not None:
-        fig.savefig(save_plot.split(".")[0] + "feature_importance.png")
-    plt.show()
 
 
 class AttributeSearch:
@@ -944,9 +951,7 @@ class AttributeSearch:
                 oa_err = mae_f
                 oa_model = fit_model_f
                 oa_scaler = scaler_f
-                oa_vals = np.concatenate(
-                    (new_hb_vals, new_hy_vals, new_sb_vals)
-                )
+                oa_vals = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
             # sort attributes for their best feature importances
             conc_vals = conc_vals[np.argsort(fis_f[0])[::-1]][:-1]
             new_hb_vals = conc_vals[np.isin(conc_vals, self.hb_vals)]
@@ -974,25 +979,27 @@ if __name__ == "__main__":
     structs = "af_all"
     p_names, temp_cd = read_data()
 
-    """
     new_hb_vals = HB_DATA_DESC
     new_hy_vals = HY_DATA_DESC
     new_sb_vals = SB_DATA_DESC
     start = timer()
     mae_f, r2_f, fis_f, used_combinations_f, fit_model_f, scaler_f = fit_data(
         f"{structs}_out",
-        force_np=1,
-        explore_all=True,
+        # force_np=1,
+        # explore_all=True,
         p_names_in=p_names,
         target=temp_cd,
-        regressor="LR",
+        regressor="RI",
+        hy_param_num=1,
+        sb_param_num=1,
+        hb_param_num=1,
         # silent=True,
-        ow_hb_vals=new_hb_vals,
-        ow_hy_vals=new_hy_vals,
-        ow_sb_vals=new_sb_vals,
+        # ow_hb_vals=new_hb_vals,
+        # ow_hy_vals=new_hy_vals,
+        # ow_sb_vals=new_sb_vals,
         paral=-1,
         c_val=None,
-        save_model="test",
+        plot_feature_imp=True
     )
     end_ = timer()
     print(end_ - start)
@@ -1011,3 +1018,4 @@ if __name__ == "__main__":
         silent=True,
         plot_search_res=True,
     ).backward_search()
+    """

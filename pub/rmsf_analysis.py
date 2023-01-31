@@ -364,8 +364,9 @@ if __name__ == "__main__":
 
     plot_multi_files(
         "md_sim_structures/",
-        HB_DATA_DESC[:3],
-        HY_DATA_DESC[:3],
-        SB_DATA_DESC[:3],
+        np.asarray(["MEAN NWS HB", "SUM NWS HB", "SUM BPN HB"]),
+        np.asarray(["MEAN CC", "MAX CA", "MAX CC"]),
+        np.asarray(["MEAN NWS SB", "SUM NWS SB", "SUM IA SB"]),
         show_plots=True,
+        save_plots="scatter.png"
     )

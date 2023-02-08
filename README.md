@@ -16,6 +16,13 @@ In the `pub` directory, one finds `protstructprop` which can be used to perform 
 *optional:*
 *  [Anaconda or Miniconda](https://docs.anaconda.com/anaconda/install/index.html)
 
+In order to install the required packages run:
+```
+python3 -m venv /PATH/TO/YOUR/VENV
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
 To execute please run one of the following commands:
 
 `python3 h_bond_test.py -f /PATH/TO/PDB/FILE`

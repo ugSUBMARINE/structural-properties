@@ -59,7 +59,7 @@ To perform the analysis, the following steps must be carried out:
         * models can be saved
 * Predict with fitted models
     * predicts values for proteins with calculate attributes
-        * `python3 protstrucprop.py predict --name_path /PATH/TO/PROTEIN/DATA --model_name NAMEOFTHEMODEL --prop_dir /PATH/TO/OUTPUT/DIR
+        * `python3 protstrucprop.py predict --name_path /PATH/TO/PROTEIN/DATA --model_name NAMEOFTHEMODEL --prop_dir /PATH/TO/OUTPUT/DIR`
         * `name_path` is a tsv file like used above but can have an empty colum for target values
     * Run `p3 protstrucprop.py predict -h` for parameter description
 

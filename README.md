@@ -33,4 +33,4 @@ To execute please run one of the following commands:
 
 For more details to the specific argument please run `python3 XXX.py -h` 
 
-The `pub` directory contains the scripts and data that was used to perform all the structure related analyses in the paper ""
+The `pub` directory contains the scripts and data that was used to perform all the structure related analyses in the paper "Stability increase of phenolic acid decarboxylase by a combination of protein and solvent engineering unlocks applications at elevated temperatures"

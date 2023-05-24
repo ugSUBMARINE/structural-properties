@@ -402,7 +402,7 @@ def cross_val(
         feature_imp = np.mean(np.abs(feature_imp), axis=0)
     else:
         feature_imp = [None]
-    return mae, r2, feature_imp
+    return mae, r2, feature_imp, predictions, ground_truth
 
 
 def fit_data(
@@ -426,6 +426,7 @@ def fit_data(
     silent: bool = False,
     paral: int | None = None,
     plot_feature_imp: bool = False,
+    comp_pred_gt: bool = False,
 ) -> None:
     """fit models, find the best parameter combination and plot scatter for multi data
     per protein
@@ -478,6 +479,9 @@ def fit_data(
           of cores or '-1' to use all cores
         - plot_feature_imp:
           set True to plot feature importance
+        - comp_pred_gt:
+          set True to print all values for all proteins predicted vs ground truth from
+          LOO analysis
     :return
         - None
     """
@@ -584,6 +588,8 @@ def fit_data(
     used_combinations = []
     mae = []
     r2 = []
+    predictions_ = []
+    ground_truth_ = []
     # feature importances
     fis = []
     spinner = spinning_wheele()
@@ -594,24 +600,28 @@ def fit_data(
             if ci % 25 == 0:
                 print("\r" + next(spinner), end="")
             # cross validation
-            i_mae, i_r2, i_fi = cross_val(
+            i_mae, i_r2, i_fi, i_pred, i_gt = cross_val(
                 LOO_model, master_frame.loc[:, c], target, split, get_fi, paral
             )
             mae.append(i_mae)
             r2.append(i_r2)
             fis.append(i_fi)
             used_combinations.append(c)
+            predictions_.append(i_pred)
+            ground_truth_.append(i_gt)
     mae = np.asarray(mae)
     r2 = np.asarray(r2)
     fis = np.asarray(fis, dtype=object)
     used_combinations = np.asarray(used_combinations, dtype=object)
+    predictions_ = np.asarray(predictions_)
+    ground_truth_ = np.asarray(ground_truth_)
 
     performance_order = np.argsort(mae)
     if not silent:
         print("\nBest 10 combinations:")
         for i in used_combinations[performance_order][:10]:
             print(f"{' - '.join(i)}")
-        print("\nBest 10 combinations (MSEs of LOO model):")
+        print("\nBest 10 combinations (MAEs of LOO model):")
         for i in mae[performance_order][:10]:
             print(f"{i:0.4f}")
         print("\nBest 10 combinations (r² over all LOO predictions):")
@@ -655,6 +665,8 @@ def fit_data(
             model_attributes=used_combinations[best_comp],
             scaler=scaler,
         )
+    for ci, (i, j) in enumerate(zip(ground_truth_[best_comp], predictions_[best_comp])):
+        print(f"{p_names_in[ci]:>5} - PRED: {j:0.1f} GROUND TRUTH: {i:0.1f}")
 
     return mae, r2, fis, used_combinations, fit_model, scaler
 
@@ -930,7 +942,14 @@ class AttributeSearch:
         oa_scaler = None
         oa_vals = None
         for i in range(total_num_vals):
-            mae_f, r2_f, fis_f, used_combinations_f, fit_model_f, scaler_f = fit_data(
+            (
+                mae_f,
+                r2_f,
+                fis_f,
+                used_combinations_f,
+                fit_model_f,
+                scaler_f,
+            ) = fit_data(
                 f"{self.structs_in}",
                 force_np=conc_vals.shape[0],
                 explore_all=True,
@@ -978,6 +997,7 @@ if __name__ == "__main__":
     pass
     structs = "af_all"
     p_names, temp_cd = read_data()
+    temp_to_name = dict(zip(temp_cd, p_names))
 
     new_hb_vals = HB_DATA_DESC
     new_hy_vals = HY_DATA_DESC
@@ -985,21 +1005,21 @@ if __name__ == "__main__":
     start = timer()
     mae_f, r2_f, fis_f, used_combinations_f, fit_model_f, scaler_f = fit_data(
         f"{structs}_out",
-        # force_np=1,
-        # explore_all=True,
+        force_np=4,
+        explore_all=True,
         p_names_in=p_names,
         target=temp_cd,
-        regressor="RI",
-        hy_param_num=1,
-        sb_param_num=1,
-        hb_param_num=1,
+        regressor="LR",
+        # hy_param_num=4,
+        # sb_param_num=4,
+        # hb_param_num=4,
         # silent=True,
         # ow_hb_vals=new_hb_vals,
         # ow_hy_vals=new_hy_vals,
         # ow_sb_vals=new_sb_vals,
         paral=-1,
         c_val=None,
-        plot_feature_imp=True
+        # plot_feature_imp=True
     )
     end_ = timer()
     print(end_ - start)

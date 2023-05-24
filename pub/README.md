@@ -31,7 +31,7 @@ Supported models are:
 
 To perform the analysis, the following steps must be carried out:
 *   Calculating the properties for each protein 
-    *`python3 protstrucprop.py properties --out_dir /PATH/TO/OUTPUT/DIR --struct_dir /PATH/TO/PDB/FILES --name_path /PATH/TO/PROTEIN/DATA`
+    * `python3 protstrucprop.py properties --out_dir /PATH/TO/OUTPUT/DIR --struct_dir /PATH/TO/PDB/FILES --name_path /PATH/TO/PROTEIN/DATA`
     * The name/path to the directory containing all protein structures need to be set in `struct_dir` and the names of the files (without the .pdb) need to be set in `name_path`
     * `name_path`needs to be a tsv file where each row is a protein name like their pdb files (without .pdb) are named and a target value for each protein used in the regression later
     * This will calculate H-Bonds, hydrophobic cluster and salt bridges and store them in `out_dir`
@@ -63,7 +63,6 @@ To perform the analysis, the following steps must be carried out:
         * `name_path` is a tsv file like used above but can have an empty colum for target values
     * Run `p3 protstrucprop.py predict -h` for parameter description
 
-
 ### File structures from property analysis
 File structure created by `protstrucprop properties`
 ```
@@ -84,5 +83,15 @@ File structure created by `protstrucprop predict`
 '- results
     '- MODELNAME.json
 ```
+
+### Calculate the structur attributes (Publication)
+`python3 protstrucprop.py properties -o af_all_out -s af_all -n protein_data.tsv`
+### Calculate the mean absolute errors and attribute importances (Publication)
+* For linear regression
+`python3 protstrucprop.py greedy -p af_all_out/ -fp 4 -e -r LR -cpg`
+* For random forest
+`python3 protstrucprop.py greedy -p af_all_out/ -fp 4 -e -r RF -cpg`
+* For k- nearest neighbors
+`python3 protstrucprop.py greedy -p af_all_out/ -fp 4 -e -r KNN -cpg`
 
 

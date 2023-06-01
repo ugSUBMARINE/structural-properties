@@ -665,8 +665,11 @@ def fit_data(
             model_attributes=used_combinations[best_comp],
             scaler=scaler,
         )
-    for ci, (i, j) in enumerate(zip(ground_truth_[best_comp], predictions_[best_comp])):
-        print(f"{p_names_in[ci]:>5} - PRED: {j:0.1f} GROUND TRUTH: {i:0.1f}")
+    if comp_pred_gt:
+        for ci, (i, j) in enumerate(
+            zip(ground_truth_[best_comp], predictions_[best_comp])
+        ):
+            print(f"{p_names_in[ci]:>5} - PRED: {j:0.1f} GROUND TRUTH: {i:0.1f}")
 
     return mae, r2, fis, used_combinations, fit_model, scaler
 
@@ -995,7 +998,7 @@ class AttributeSearch:
 
 if __name__ == "__main__":
     pass
-    structs = "af_all"
+    structs = "af_all_ii"
     p_names, temp_cd = read_data()
     temp_to_name = dict(zip(temp_cd, p_names))
 
@@ -1005,7 +1008,7 @@ if __name__ == "__main__":
     start = timer()
     mae_f, r2_f, fis_f, used_combinations_f, fit_model_f, scaler_f = fit_data(
         f"{structs}_out",
-        force_np=4,
+        force_np=2,
         explore_all=True,
         p_names_in=p_names,
         target=temp_cd,

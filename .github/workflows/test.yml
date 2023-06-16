@@ -43,4 +43,7 @@ jobs:
     - name: Test hydrophobic cluster 
       shell: bash
       run: python3 hydrophobic_cluster.py -f test_data/gb1.pdb
+    - name: Test surface amino acids 
+      shell: bash
+      run: python3 surface.py -f test_data/gb1.pdb -c test_data/surface.csv
       

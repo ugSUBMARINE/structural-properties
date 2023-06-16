@@ -1,7 +1,7 @@
 ![TEST](https://github.com/ugSUBMARINE/structural-properties/actions/workflows/test.yml/badge.svg)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-This is a repository in which 3 stand-alone programmes for the calculation of hydrogen bond networks, salt bridge networks and hydrophobic clusters inside a protein structure are available.
+This is a repository in which 3 stand-alone programmes for the calculation of hydrogen bond networks, salt bridge networks and hydrophobic clusters inside a protein structure are available as well as amino acids that belong tho the surface.
 To calculate these properties, a pdb file of the protein of interest is needed.
 Only entries in the pdb file with marked as ATOM are considered. Duplicated side chain entries are not allowed. It is possible to select one chain or to use all chains in the pdb file for the calculation.
 Each of the files contains an argparser and can be used with the filepath to the pdb file of the protein of interest as only argument.
@@ -30,6 +30,8 @@ To execute please run one of the following commands:
 `python3 hydrophobic_cluster.py -f /PATH/TO/PDB/FILE`
 
 `python3 salt_bridges.py -f /PATH/TO/PDB/FILE`
+
+`python3 surface.py -f /PATH/TO/PDB/FILE`
 
 For more details to the specific argument please run `python3 XXX.py -h` 
 

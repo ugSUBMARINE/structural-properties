@@ -14,7 +14,7 @@ from sklearn.linear_model import Ridge, LinearRegression
 from sklearn.preprocessing import MinMaxScaler
 import joblib
 
-from properties import SaltBridges, HydrophobicClusterOwn
+from properties import SaltBridges, HydrophobicClusterOwn, SurfaceProp
 
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -62,6 +62,7 @@ HB_DATA_DESC = np.asarray(
         "ICB",
     ]
 )
+SF_DATA_DESC = np.asarray(["SUM CHARGED RES", "SUM CHARGE", "SUM HYDROPATHY"])
 
 
 ############################ utility functions start ##################################
@@ -252,9 +253,11 @@ def get_data(
     hb_end: str = "_hb",
     hy_end: str = "_hy",
     sb_end: str = "_sb",
+    sf_end: str = "_sf",
     file_type: str = "csv",
     p_names_in: np.ndarray[tuple[int], np.dtype[str]] | None = None,
 ) -> tuple[
+    np.ndarray[tuple[int, int], np.dtype[float]],
     np.ndarray[tuple[int, int], np.dtype[float]],
     np.ndarray[tuple[int, int], np.dtype[float]],
     np.ndarray[tuple[int, int], np.dtype[float]],
@@ -263,12 +266,12 @@ def get_data(
     :parameter
         - data_path:
           file path where all files are stored
-        - hb_end, hy_end, sb_end:
+        - hb_end, hy_end, sb_end, sf_end:
           file suffix for H-Bonds, hydrophobic cluster and salt bridges outfiles
         - p_names_in:
           name of the proteins in their files
     :return
-        - data of read H-Bonds, hydrophobic cluster and salt bridges outfiles
+        - data of read H-Bonds, hydrophobic cluster, salt bridges and surface outfiles
           description
     """
 
@@ -276,17 +279,27 @@ def get_data(
     hb_data = []
     hy_data = []
     sb_data = []
+    sf_data = []
     for i in p_names_in:
         hb_path = f"{os.path.join(f'{data_path}',f'{i}{hb_end}.{file_type}')}"
-        hb = SaltBridges(hb_path, -1, HB_DATA_DESC)
-        hb_data.append(list(hb.stats()[:-1]))
+        hb = SaltBridges(hb_path)
+        hb_data.append(list(hb.stats()))
         hy_path = f"{os.path.join(f'{data_path}',f'{i}{hy_end}.{file_type}')}"
-        hy = HydrophobicClusterOwn(hy_path, HY_DATA_DESC)
-        hy_data.append(list(hy.stats())[:-1])
+        hy = HydrophobicClusterOwn(hy_path)
+        hy_data.append(list(hy.stats()))
         sb_path = f"{os.path.join(f'{data_path}',f'{i}{sb_end}.{file_type}')}"
-        sb = SaltBridges(sb_path, -1, SB_DATA_DESC)
-        sb_data.append(list(sb.stats())[:-1])
-    return np.asarray(hb_data), np.asarray(hy_data), np.asarray(sb_data)
+        sb = SaltBridges(sb_path)
+        sb_data.append(list(sb.stats()))
+        sf_path = f"{os.path.join(f'{data_path}',f'{i}{sf_end}.{file_type}')}"
+        sf = SurfaceProp(sf_path)
+        sf_data.append(list(sf.stats()))
+
+    return (
+        np.asarray(hb_data),
+        np.asarray(hy_data),
+        np.asarray(sb_data),
+        np.asarray(sf_data),
+    )
 
 
 def cross_val(
@@ -396,6 +409,7 @@ def cross_val(
 
     # mean absolute error and r2 of all test data points
     mae = np.mean(np.abs(predictions - ground_truth))
+    # mae = np.mean((predictions - ground_truth) ** 2)
     r2 = r2_score(ground_truth, predictions)
     # mean feature importance over all k- folds
     if fi is not None:
@@ -413,9 +427,11 @@ def fit_data(
     hb_param_num: int = 3,
     hy_param_num: int = 3,
     sb_param_num: int = 3,
+    sf_param_num: int = 3,
     ow_hb_vals: np.ndarray[tuple[int], np.dtype[str]] | None = None,
     ow_hy_vals: np.ndarray[tuple[int], np.dtype[str]] | None = None,
     ow_sb_vals: np.ndarray[tuple[int], np.dtype[str]] | None = None,
+    ow_sf_vals: np.ndarray[tuple[int], np.dtype[str]] | None = None,
     p_names_in: np.ndarray[tuple[int], np.dtype[str]] | None = None,
     chose_model_ind: int | None = None,
     force_cmi: bool = False,
@@ -446,12 +462,16 @@ def fit_data(
           number of hydrophobic cluster attributes to be tested
         - sb_param_num:
           number of salt bridges attributes to be tested
+        - sf_param_num:
+          number of surface attributes to be tested
         - ow_hb_vals:
           if chosen H-bonds attributes in *_vals should be overwritten
         - ow_hy_vals:
           if chosen hydrophobic cluster attributes in *_vals should be overwritten
         - ow_sb_vals:
           if chosen salt bridges attributes in *_vals should be overwritten
+        - ow_sf_vals:
+          if chosen surface attributes in *_vals should be overwritten
         - p_names_in:
           Name of the proteins and their respective files like 769bc for 769bc.pdb
         - chose_model_ind:
@@ -487,7 +507,7 @@ def fit_data(
     """
 
     # retrieve the data
-    h_bonds_data, hydrophobic_cluster_data, salt_bridges_data = get_data(
+    h_bonds_data, hydrophobic_cluster_data, salt_bridges_data, surface_data = get_data(
         data_path, p_names_in=p_names_in
     )
 
@@ -495,6 +515,7 @@ def fit_data(
         hb_vals = HB_DATA_DESC
         hy_vals = HY_DATA_DESC
         sb_vals = SB_DATA_DESC
+        sf_vals = SF_DATA_DESC
     else:
         if not silent:
             print("Hydrogen Bonds")
@@ -509,7 +530,9 @@ def fit_data(
         sb_vals = single_stats(
             SB_DATA_DESC, salt_bridges_data, target, sb_param_num, silent
         )
-
+        if not silent:
+            print("\nSurface")
+        sf_vals = single_stats(SF_DATA_DESC, surface_data, target, sf_param_num, silent)
     # to be able to overwrite the *_vals
     if ow_hb_vals is not None:
         hb_vals = ow_hb_vals
@@ -517,6 +540,8 @@ def fit_data(
         hy_vals = ow_hy_vals
     if ow_sb_vals is not None:
         sb_vals = ow_sb_vals
+    if ow_sf_vals is not None:
+        sf_vals = ow_sf_vals
 
     # create DataFrames
     sb_df = pd.DataFrame(
@@ -526,9 +551,10 @@ def fit_data(
     hy_df = pd.DataFrame(
         hydrophobic_cluster_data, index=p_names_in, columns=HY_DATA_DESC
     ).round(2)
+    sf_df = pd.DataFrame(surface_data, index=p_names_in, columns=SF_DATA_DESC).round(2)
 
     # make one big DataFrame
-    master_frame = pd.concat([hb_df, hy_df, sb_df], axis=1)
+    master_frame = pd.concat([hb_df, hy_df, sb_df, sf_df], axis=1)
     # scale values so each feature is in range (0, 1)
     scaler = MinMaxScaler()
     scaler.fit(master_frame)
@@ -537,7 +563,7 @@ def fit_data(
         inter_master_frame, index=master_frame.index, columns=master_frame.columns
     )
     # make all single, double, ... NumMastervals combinations and test their performance
-    master_vals = list(hb_vals) + list(hy_vals) + list(sb_vals)
+    master_vals = list(hb_vals) + list(hy_vals) + list(sb_vals) + list(sf_vals)
 
     # whether feature importance is possible
     get_fi = None
@@ -557,17 +583,17 @@ def fit_data(
             print("Chosen Regressor: RandomForestRegressor")
         get_fi = "f"
         LOO_model = RandomForestRegressor(
-            max_depth=3, random_state=0, n_estimators=10, oob_score=True, n_jobs=10
+            max_depth=3, random_state=0, n_estimators=25, oob_score=True, n_jobs=10
         )
     elif regressor == "KNN":
         if not silent:
             print("Chosen Regressor: KNeighborsRegressor")
-        LOO_model = KNeighborsRegressor(n_neighbors=2, weights="distance", n_jobs=10)
+        LOO_model = KNeighborsRegressor(n_neighbors=4, weights="distance", n_jobs=10)
     elif regressor == "GB":
         if not silent:
             print("Chosen Regressor: GradientBoostingRegressor")
         get_fi = "f"
-        LOO_model = GradientBoostingRegressor(n_estimators=10, random_state=0)
+        LOO_model = GradientBoostingRegressor(n_estimators=100, random_state=0)
     else:
         raise KeyError(f"Invalid regressor encountered: '{regressor}'")
 
@@ -670,6 +696,29 @@ def fit_data(
             zip(ground_truth_[best_comp], predictions_[best_comp])
         ):
             print(f"{p_names_in[ci]:>5} - PRED: {j:0.1f} GROUND TRUTH: {i:0.1f}")
+        print(
+            f"MAE:{np.mean(np.abs(ground_truth_[best_comp] - predictions_[best_comp])):0.3f}"
+            f"\nMSE:{np.mean((ground_truth_[best_comp] - predictions_[best_comp]) ** 2):0.3f}"
+        )
+        gt_sort = np.argsort(ground_truth_[best_comp])
+        p_sort = np.argsort(predictions_[best_comp])
+        inds_to_sort = np.arange(len(gt_sort))
+        print(
+            np.sum(
+                np.isin(
+                    inds_to_sort[p_sort[::-1]][:30], inds_to_sort[gt_sort[::-1]][:10]
+                )
+            )
+        )
+        sort_inds_gt = np.argsort(ground_truth_[best_comp])
+        fig, ax = plt.subplots(figsize=(18, 32))
+        ax.plot(ground_truth_[best_comp][sort_inds_gt], color="forestgreen", label="GT")
+        ax.plot(
+            predictions_[best_comp][sort_inds_gt], color="firebrick", label="Prediction"
+        )
+        plt.legend()
+        # fig.savefig("/home/gwirn/PhDProjects/ene_reductases/LR5p.png")
+        plt.show()
 
     return mae, r2, fis, used_combinations, fit_model, scaler
 
@@ -684,6 +733,7 @@ class AttributeSearch:
         hb_vals: np.ndarray[tuple[int], np.dtype[str]],
         hy_vals: np.ndarray[tuple[int], np.dtype[str]],
         sb_vals: np.ndarray[tuple[int], np.dtype[str]],
+        sf_vals: np.ndarray[tuple[int], np.dtype[str]],
         c_val: int | None = None,
         silent: bool = False,
         paral: int | None = None,
@@ -708,6 +758,8 @@ class AttributeSearch:
               Hydrophobic Cluster attributes to be tested
             - sb_vals:
               Salt Bridges attributes to be tested
+            - sb_vals:
+              Surface attributes to be tested
             - c_val:
               integer do specify the number of splits or
               None for LeaveOneOut cross validation
@@ -730,6 +782,7 @@ class AttributeSearch:
         self.hb_vals = hb_vals
         self.hy_vals = hy_vals
         self.sb_vals = sb_vals
+        self.sf_vals = sf_vals
         self.c_val = c_val
         self.silent = silent
         self.paral = paral
@@ -749,6 +802,7 @@ class AttributeSearch:
         new_hb_vals = self.hb_vals
         new_hy_vals = self.hy_vals
         new_sb_vals = self.sb_vals
+        new_sf_vals = self.sf_vals
         conc_vals = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
         # total number of attributes
         total_num_vals = conc_vals.shape[0]
@@ -775,6 +829,7 @@ class AttributeSearch:
                 new_hb_vals = added_val[np.isin(added_val, self.hb_vals)]
                 new_hy_vals = added_val[np.isin(added_val, self.hy_vals)]
                 new_sb_vals = added_val[np.isin(added_val, self.sb_vals)]
+                new_sf_vals = added_val[np.isin(added_val, self.sf_vals)]
                 (
                     mae_f,
                     r2_f,
@@ -793,6 +848,7 @@ class AttributeSearch:
                     ow_hb_vals=new_hb_vals,
                     ow_hy_vals=new_hy_vals,
                     ow_sb_vals=new_sb_vals,
+                    ow_sf_vals=new_sf_vals,
                     paral=self.paral,
                     c_val=self.c_val,
                 )
@@ -841,6 +897,7 @@ class AttributeSearch:
         new_hb_vals = self.hb_vals
         new_hy_vals = self.hy_vals
         new_sb_vals = self.sb_vals
+        new_sf_vals = self.sf_vals
         conc_vals = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
         # total number of attributes
         total_num_vals = conc_vals.shape[0]
@@ -867,6 +924,7 @@ class AttributeSearch:
                 new_hb_vals = i_cv[np.isin(i_cv, self.hb_vals)]
                 new_hy_vals = i_cv[np.isin(i_cv, self.hy_vals)]
                 new_sb_vals = i_cv[np.isin(i_cv, self.sb_vals)]
+                new_sf_vals = i_cv[np.isin(i_cv, self.sf_vals)]
                 (
                     mae_f,
                     r2_f,
@@ -885,6 +943,7 @@ class AttributeSearch:
                     ow_hb_vals=new_hb_vals,
                     ow_hy_vals=new_hy_vals,
                     ow_sb_vals=new_sb_vals,
+                    ow_sf_vals=new_sf_vals,
                     paral=self.paral,
                     c_val=self.c_val,
                 )
@@ -930,6 +989,7 @@ class AttributeSearch:
         new_hb_vals = self.hb_vals
         new_hy_vals = self.hy_vals
         new_sb_vals = self.sb_vals
+        new_sf_vals = self.sf_vals
         conc_vals = np.concatenate((new_hb_vals, new_hy_vals, new_sb_vals))
         # total number of attributes
         total_num_vals = conc_vals.shape[0]
@@ -963,12 +1023,14 @@ class AttributeSearch:
                 ow_hb_vals=new_hb_vals,
                 ow_hy_vals=new_hy_vals,
                 ow_sb_vals=new_sb_vals,
+                ow_sf_vals=new_sf_vals,
                 paral=self.paral,
                 c_val=self.c_val,
             )
             best_errors.append(mae_f)
             att_imp.append(fis_f[0])
             best_vals.append(conc_vals)
+            print(oa_err, mae_f)
             if oa_err > mae_f:
                 oa_err = mae_f
                 oa_model = fit_model_f
@@ -979,6 +1041,7 @@ class AttributeSearch:
             new_hb_vals = conc_vals[np.isin(conc_vals, self.hb_vals)]
             new_hy_vals = conc_vals[np.isin(conc_vals, self.hy_vals)]
             new_sb_vals = conc_vals[np.isin(conc_vals, self.sb_vals)]
+            new_sf_vals = conc_vals[np.isin(conc_vals, self.sf_vals)]
 
         # determine the best attribute combination and plot the cource of the search
         performance_order = np.argmin(best_errors)
@@ -999,16 +1062,20 @@ class AttributeSearch:
 if __name__ == "__main__":
     pass
     structs = "af_all_ii"
+    structs = "test"
     p_names, temp_cd = read_data()
     temp_to_name = dict(zip(temp_cd, p_names))
 
     new_hb_vals = HB_DATA_DESC
     new_hy_vals = HY_DATA_DESC
     new_sb_vals = SB_DATA_DESC
+    new_sf_vals = SF_DATA_DESC
+
+    """
     start = timer()
     mae_f, r2_f, fis_f, used_combinations_f, fit_model_f, scaler_f = fit_data(
         f"{structs}_out",
-        force_np=2,
+        force_np=3,
         explore_all=True,
         p_names_in=p_names,
         target=temp_cd,
@@ -1016,10 +1083,12 @@ if __name__ == "__main__":
         # hy_param_num=4,
         # sb_param_num=4,
         # hb_param_num=4,
+        # sf_param_num=4,
         # silent=True,
         # ow_hb_vals=new_hb_vals,
         # ow_hy_vals=new_hy_vals,
         # ow_sb_vals=new_sb_vals,
+        # ow_sf_vals=new_sf_vals,
         paral=-1,
         c_val=None,
         # plot_feature_imp=True
@@ -1036,9 +1105,9 @@ if __name__ == "__main__":
         HB_DATA_DESC,
         HY_DATA_DESC,
         SB_DATA_DESC,
+        SF_DATA_DESC,
         paral=-1,
         c_val=None,
         silent=True,
         plot_search_res=True,
     ).backward_search()
-    """

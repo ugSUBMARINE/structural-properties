@@ -1,34 +1,63 @@
-import os
-import sys
-import itertools
-
 import numpy as np
 import pandas as pd
-from scipy import stats
-from matplotlib import pyplot as plt
+
+
+charge = {
+    "ALA": 0,
+    "CYS": 0,
+    "ASP": -1,
+    "GLU": -1,
+    "PHE": 0,
+    "GLY": 0,
+    "HIS": 1,
+    "ILE": 0,
+    "LYS": 1,
+    "LEU": 0,
+    "MET": 0,
+    "ASN": 0,
+    "PRO": 0,
+    "GLN": 0,
+    "ARG": 1,
+    "SER": 0,
+    "THR": 0,
+    "VAL": 0,
+    "TRP": 0,
+    "TYR": 0,
+}
+
+hydropathy = {
+    "ALA": 1.8,
+    "CYS": 2.5,
+    "ASP": -3.5,
+    "GLU": -3.5,
+    "PHE": 2.8,
+    "GLY": -0.4,
+    "HIS": -3.2,
+    "ILE": 4.5,
+    "LYS": -3.9,
+    "LEU": 3.8,
+    "MET": 1.9,
+    "ASN": -3.5,
+    "PRO": -1.6,
+    "GLN": -3.5,
+    "ARG": -4.5,
+    "SER": -0.8,
+    "THR": -0.7,
+    "VAL": 4.2,
+    "TRP": -0.9,
+    "TYR": -1.3,
+}
 
 
 class SaltBridges:
-    def __init__(self, detailed_filepath, server_filepath, data_description):
+    def __init__(self, detailed_filepath):
         self.detailed_filepath = detailed_filepath
-        self.server_filepath = server_filepath
-        self.data_description = data_description
 
     def read_detailed_data(self):
         data = pd.read_csv(self.detailed_filepath, delimiter=",")
         return (
             np.asarray(data["InteractingResidues"]),
             np.asarray(data["ContactsPerCluster"]),
-        )
-
-    def read_server_data(self):
-        data = pd.read_csv(self.server_filepath, delimiter=",")
-        data_description = ["FCR", "Kappa"]
-        return (
-            np.asarray(data["protein"]),
-            np.asarray(data["FCR"]),
-            np.asarray(data["Kappa"]),
-            data_description,
         )
 
     def network_data(self):
@@ -60,14 +89,12 @@ class SaltBridges:
             np.mean(cs),
             np.sum(cs),
             ic,
-            self.data_description,
         )
 
 
 class HydrophobicClusterOwn:
-    def __init__(self, filepath, data_description):
+    def __init__(self, filepath):
         self.filepath = filepath
-        self.data_description = data_description
 
     def read_detailed_data(self):
         data = pd.read_csv(self.filepath, delimiter=",")
@@ -106,10 +133,28 @@ class HydrophobicClusterOwn:
             np.mean(ia),
             np.sum(ia),
             ic,
-            self.data_description,
         )
 
 
+class SurfaceProp:
+    def __init__(self, filepath):
+        self.filepath = filepath
+
+    def stats(self):
+        data = pd.read_csv(self.filepath, delimiter=",")
+        aa_surf = data["aminoAcid"][data["surfaceAA"]].values
+        charge_transform = np.asarray(list(map(charge.get, aa_surf)))
+        hydropathy_transform = np.asarray(list(map(hydropathy.get, aa_surf)))
+        return (
+            np.sum(charge_transform != 0),
+            np.sum(charge_transform),
+            np.sum(hydropathy_transform),
+        )
+
 
 if __name__ == "__main__":
+    a = SurfaceProp(
+        "/home/gwirn/PhDProjects/ancestors/ancestor_pub/surface_test.csv"
+    )
+    print(a.stats())
     pass

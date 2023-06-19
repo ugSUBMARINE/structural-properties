@@ -8,6 +8,7 @@ sys.path.append((os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from h_bond_test import find_h_bonds
 from salt_bridges import find_saltbridges
 from hydrophobic_cluster import hydr_cluster
+from surface import surface_amino_acids
 
 from regressor_analysis import read_data
 
@@ -69,9 +70,21 @@ def calculate(
             create_file=f"{out_dir}/{i}_hy",
             silent=True,
         )
+        surface_amino_acids(
+            file_path,
+            create_file=f"{out_dir}/{i}_sf",
+            silent=True,
+        )
 
 
 if __name__ == "__main__":
     pass
-    p_names, _ = read_data() 
-    calculate("structures_out_", "structures/", p_names)
+    p_names, _ = read_data()
+    """
+    p_names = p_names[:-2]
+    for i in range(10):
+        calculate(f"./md_attr/md_{i}_out", f"./md_attr/md_{i}/", p_names)
+    """
+    calculate("test_out_", "af_all_ii/", p_names)
+
+    # calculate("structures_out_", "structures/", p_names)

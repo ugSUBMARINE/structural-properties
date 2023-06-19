@@ -18,7 +18,7 @@ def surface_amino_acids(
     resolution: int | float = 3,
     threshold: int | float = 3.5,
     border: int | float = 4,
-    outfile: str | None = None,
+    create_file: str | None = None,
     sele_chain: str | None = None,
     silent: bool = True,
 ):
@@ -33,7 +33,7 @@ def surface_amino_acids(
           as protein point
         - border:
           how much the grid should be expanded over the furthest out protein coordinates
-        - outfile:
+        - create_file:
           file path where the output file should be stored
         - sele_chain:
           ChainID if everything should be done for only one chain
@@ -108,8 +108,8 @@ def surface_amino_acids(
     # get the amino acid names/data if they are near the surface
     check = df.groupby(["aminoAcid", "chain", "num"], as_index=False)["surfaceAA"].any()
     check = check.sort_values(["chain", "num"])
-    if outfile is not None:
-        check.to_csv(outfile, index=False)
+    if create_file is not None:
+        check.to_csv(f"{create_file}.csv", index=False)
     if not silent:
         print(check[check["surfaceAA"]])
 
@@ -172,10 +172,9 @@ def arg_dict() -> dict:
     args = parser.parse_args()
     d = {
         "file_path": args.file_path,
-        "outfile": args.create_file,
+        "create_file": args.create_file,
         "resolution": args.resolution,
         "threshold": args.threshold,
-        "outfile": args.create_file,
         "sele_chain": args.sele_chain,
         "silent": args.not_silent,
     }
